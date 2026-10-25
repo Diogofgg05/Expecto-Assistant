@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+data/
+*.sqlite3
+.DS_Store
+
+# Protected user backups and exports
+*.auraenc
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Saved DSPy candidates and learned demos: may contain data from custom benchmarks
+/data/optimizer/

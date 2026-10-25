@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "description": "Exemplos artificiais públicos para avaliar respostas factuais curtas e citações. Não são dados do utilizador.",
+  "cases": [
+    {"id":"a01","split":"train","question":"Qual é a capital de Portugal? Responde apenas com a cidade.","evidence":"[D01] Lisboa é a capital de Portugal. [D02] Coimbra é conhecida pela universidade.","answer":"Lisboa","source_id":"D01"},
+    {"id":"a02","split":"train","question":"Que protocolo protege o tráfego HTTPS? Responde com a sigla.","evidence":"[D01] HTTPS usa TLS para proteger as comunicações. [D02] HTTP não impõe cifragem.","answer":"TLS","source_id":"D01"},
+    {"id":"a03","split":"train","question":"Qual é o elemento químico com símbolo Fe?","evidence":"[D01] Fe é o símbolo químico do ferro. [D02] O oxigénio tem símbolo O.","answer":"ferro","source_id":"D01"},
+    {"id":"a04","split":"train","question":"Qual é a extensão habitual dos ficheiros Python?","evidence":"[D01] Um módulo Python pode ser guardado com a extensão .py. [D02] Uma folha CSS usa .css.","answer":".py","source_id":"D01"},
+    {"id":"a05","split":"train","question":"Qual é a camada do modelo OSI responsável por encaminhar pacotes?","evidence":"[D01] A camada de rede do modelo OSI encaminha pacotes. [D02] A camada de aplicação fornece serviços aos utilizadores.","answer":"rede","source_id":"D01"},
+    {"id":"a06","split":"train","question":"Que base de dados embebida guarda dados num único ficheiro?","evidence":"[D01] SQLite é uma base de dados embebida baseada num ficheiro. [D02] PostgreSQL é um sistema servidor.","answer":"SQLite","source_id":"D01"},
+    {"id":"a07","split":"train","question":"Qual o operador matemático usado na soma?","evidence":"[D01] A adição representa-se habitualmente com o sinal +. [D02] A divisão pode representar-se por /.","answer":"+","source_id":"D01"},
+    {"id":"a08","split":"train","question":"Que linguagem descreve a estrutura de páginas web?","evidence":"[D01] HTML descreve a estrutura dos documentos web. [D02] CSS descreve a apresentação visual.","answer":"HTML","source_id":"D01"},
+    {"id":"b01","split":"dev","question":"Que componente executa instruções num computador?","evidence":"[D01] O SSD armazena ficheiros. [D02] O CPU executa instruções de programas.","answer":"CPU","source_id":"D02"},
+    {"id":"b02","split":"dev","question":"Qual é o nome da linguagem de consulta relacional?","evidence":"[D01] SQL é usada para consultar e modificar bases de dados relacionais. [D02] JSON é um formato de dados.","answer":"SQL","source_id":"D01"},
+    {"id":"b03","split":"dev","question":"Que tecnologia permite criar containers?","evidence":"[D01] Git gere versões de ficheiros. [D02] Docker permite construir e executar containers.","answer":"Docker","source_id":"D02"},
+    {"id":"b04","split":"dev","question":"Qual é o formato habitual para ficheiros com objetos JSON?","evidence":"[D01] Os ficheiros JSON usam frequentemente .json. [D02] Os ficheiros Markdown usam .md.","answer":".json","source_id":"D01"},
+    {"id":"c01","split":"test","question":"Que serviço traduz nomes de domínio para endereços IP?","evidence":"[D01] O SSH permite acesso remoto seguro. [D02] O DNS resolve nomes de domínio para endereços IP.","answer":"DNS","source_id":"D02"},
+    {"id":"c02","split":"test","question":"Que ferramenta é usada para controlo de versões distribuído?","evidence":"[D01] Git é um sistema de controlo de versões distribuído. [D02] Nginx é um servidor web.","answer":"Git","source_id":"D01"},
+    {"id":"c03","split":"test","question":"Como se chama a memória volátil de acesso aleatório?","evidence":"[D01] Um HDD é armazenamento persistente. [D02] RAM é memória volátil de acesso aleatório.","answer":"RAM","source_id":"D02"},
+    {"id":"c04","split":"test","question":"Qual é a tecnologia de estilos usada em páginas web?","evidence":"[D01] CSS descreve estilos de páginas web. [D02] XML é uma linguagem de marcação para dados.","answer":"CSS","source_id":"D01"},
+    {"id":"c05","split":"test","question":"Que protocolo é usado para transferência segura de ficheiros sobre SSH?","evidence":"[D01] SMTP é usado para envio de correio eletrónico. [D02] SFTP permite transferir ficheiros sobre SSH.","answer":"SFTP","source_id":"D02"}
+  ]
+}

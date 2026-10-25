@@ -1,0 +1,4 @@
+# OPT-IN: instalacao apenas se quiseres realizar experiencias DSPy offline.
+# Testado quanto a contrato de API/documentacao, mas exige teste real com Ollama.
+-r requirements.txt
+dspy>=3.4.1,<3.5
