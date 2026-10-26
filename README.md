@@ -1,4 +1,4 @@
-# Expecto Assistant — Aprendizagem Profunda 3.9 (Patronum)
+# Expecto Assistant — Aprendizagem Experimental 4.0 (Patronum)
 
 Assistente pessoal local com interface holográfica sem botões ou barras laterais, memória persistente, motor de aprendizagem documental e comando **"Ativa Patronum"**.
 
@@ -13,6 +13,18 @@ Assistente pessoal local com interface holográfica sem botões ou barras latera
 - CLI: `python -m aura.deep_book_cli mastery-check benchmarks/meu_benchmark.json` e `mastery-plan ID_AVALIACAO`.
 
 Manual: [BOOK_MASTERY_39.md](docs/BOOK_MASTERY_39.md).
+
+## Novidade 4.0 — Aprendizagem avaliada em três conjuntos
+
+A Expecto 4.0 acrescenta o **Book Iteration Lab**, um ciclo de engenharia que compara métodos de recuperação das passagens dos livros com **treino, validação e teste reservado**. A escolha é feita no treino, validada num conjunto distinto e auditada numa avaliação final independente. Uma regressão impede recomendações de alteração.
+
+- Comandos: `python -m aura.deep_book_cli learning-cycle benchmarks/meu_ciclo.json --limits 4 8 12`, `cycle-report ID`, `cycle-review ID`, `cycle-restudy ID` e `cycle-history`.
+- O plano de releitura mostra páginas e excertos associados às falhas do **treino**, sem expor gabaritos reservados ao modelo.
+- As alterações ficam registadas como recomendações **a aguardar aprovação**; nada é ativado na aplicação ou reescrito autonomamente.
+- Avaliações locais, sem upload de livros, e histórico persistente na memória existente.
+- O laboratório seleciona estratégias de **recuperação**, não modifica pesos dos modelos; a verificação de compreensão humana continua a ser necessária.
+
+Manual completo: [docs/LEARNING_CYCLE_40.md](docs/LEARNING_CYCLE_40.md).
 
 ## Melhorias 3.8 — Livro → conceito → aplicação → teste
 
