@@ -1,0 +1,14 @@
+{
+  "train": [
+    {"id":"train_01", "curation":"human_reviewed", "book_id":"ID_LIVRO", "chapter_id":null, "question":"Escreve uma primeira pergunta de treino diferente das outras.", "expected_answer":"Resposta de referência revista por um humano.", "gold_passage_ids":["ID_PASSAGEM_1"]},
+    {"id":"train_02", "curation":"human_reviewed", "book_id":"ID_LIVRO", "chapter_id":null, "question":"Cria uma segunda pergunta sobre outro conceito do capítulo.", "expected_answer":"Outra resposta de referência validada pelo autor.", "gold_passage_ids":["ID_PASSAGEM_2"]}
+  ],
+  "validation": [
+    {"id":"validation_01", "curation":"human_reviewed", "book_id":"ID_LIVRO", "chapter_id":null, "question":"Como se aplica esse conceito a uma situação diferente da primeira?", "expected_answer":"Resultado independente revisto por um humano.", "gold_passage_ids":["ID_PASSAGEM_3"]},
+    {"id":"validation_02", "curation":"human_reviewed", "book_id":"ID_LIVRO", "chapter_id":null, "question":"Que propriedade pode ser demonstrada em outro exemplo?", "expected_answer":"Definição externa validada independentemente.", "gold_passage_ids":["ID_PASSAGEM_4"]}
+  ],
+  "holdout": [
+    {"id":"holdout_01", "curation":"human_reviewed", "book_id":"ID_LIVRO", "chapter_id":null, "question":"Explica uma aplicação inédita de outra secção do livro.", "expected_answer":"Resposta para teste reservado verificada por humano.", "gold_passage_ids":["ID_PASSAGEM_5"]},
+    {"id":"holdout_02", "curation":"human_reviewed", "book_id":"ID_LIVRO", "chapter_id":null, "question":"O livro descreve algum exemplo sobre meteoritos habitados?", "unanswerable":true, "expected_answer":"", "gold_passage_ids":[]}
+  ]
+}
