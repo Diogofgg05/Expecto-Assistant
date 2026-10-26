@@ -1,3 +1,11 @@
+## 3.9 — Book Mastery Lab (26-10-2026)
+
+- Novo motor `aura/book_mastery.py` para avaliação de questões independentes, escolhidas/revistas por humanos, sobre passagens de PDFs autorizados.
+- As respostas esperadas e IDs gold não entram no prompt do Ollama. Avaliação persistente por livro/capítulo, F1 lexical, evidências citadas e abstenção.
+- Verificação conservadora de negação e de integridade/hash das fontes, com invalidação de avaliações depois de alterações.
+- Comandos `mastery-check`, `mastery-report`, `mastery-plan`, `mastery-history` e `mastery-compare`; documentação e JSON de exemplo.
+- Não há promoção automática a factos, nem aprendizagem real comprovada com Ollama sem testes nesse ambiente.
+
 # Expecto Ultimate 3.8 — Deep Book Mastery (2026-10-26)
 
 - Pesquisa híbrida com FTS5 e embeddings Ollama opcionais (`aura/book_semantics.py`).
