@@ -1,0 +1,22 @@
+[
+  {
+    "id": "chapter-001",
+    "curation": "human_reviewed",
+    "book_id": "COLOCAR_ID_DO_LIVRO_IMPORTADO",
+    "chapter_id": "COLOCAR_ID_DO_CAPITULO",
+    "question": "Qual é o mecanismo principal apresentado no capítulo e como se aplica?",
+    "expected_answer": "COLOCAR_RESPOSTA_ESCRITA_E_REVISTA_POR_HUMANO",
+    "gold_passage_ids": ["COLOCAR_ID_DA_PASSAGEM_CORRETA"],
+    "unanswerable": false
+  },
+  {
+    "id": "chapter-002",
+    "curation": "human_reviewed",
+    "book_id": "COLOCAR_ID_DO_LIVRO_IMPORTADO",
+    "chapter_id": "COLOCAR_ID_DO_CAPITULO",
+    "question": "Qual é o número de habitantes de Marte segundo este capítulo?",
+    "expected_answer": "",
+    "gold_passage_ids": [],
+    "unanswerable": true
+  }
+]
