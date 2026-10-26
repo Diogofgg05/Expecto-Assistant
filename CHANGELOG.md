@@ -105,3 +105,14 @@
 
 ## 3.4.0 — Book Learning
 Motor local de ingestão PDF com FTS5, páginas/citações, verificações de integridade e propostas de conhecimento não verificadas.
+
+## 4.0 — Independent Book Learning Cycle (2026-10-26)
+
+- Novo `BookIterationLab`: ciclo de medição com **treino, validação e teste reservado** em conjuntos separados e preparados por humanos.
+- Experimenta limites de recuperação 1–12 (máximo quatro configurações) com memória e pesquisas de livros existentes, sem reescrever o modelo nem instalar a alteração.
+- A seleção usa apenas o treino; a validação e o teste reservado auditam melhorias. Um resultado inferior no teste reservado impede recomendação.
+- Deteta questões iguais ou quase duplicadas entre divisões, integridade de passagens e divergências de fontes após a avaliação.
+- Histórico persistente dos resultados e um plano de releitura com citações baseado **exclusivamente nas falhas de treino**, não nas respostas de validação e teste.
+- Comandos CLI `learning-cycle`, `cycle-report`, `cycle-review`, `cycle-restudy` (opt-in) e `cycle-history`.
+- Mantém livro/PDF, pesquisas locais e compatibilidade com bases 3.9; não envia dados para serviços externos por predefinição.
+- **Limite:** o ciclo melhora escolhas de recuperação e avaliações; não é fine-tuning, aprendizagem de pesos ou prova de compreensão de livros.
