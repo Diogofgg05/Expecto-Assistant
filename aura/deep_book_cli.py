@@ -7,6 +7,7 @@ from .deep_books import DeepBookStudy
 from .book_reasoning import BookReasoningEngine,OllamaBookModel
 from .book_semantics import BookSemanticIndex,OllamaBookEncoder
 from .book_mastery import BookMasteryLab
+from .book_iteration import BookIterationLab
 
 def main():
     p=argparse.ArgumentParser()
@@ -41,6 +42,18 @@ def main():
     mastery_plan.add_argument('run_id')
     mastery_compare=sub.add_parser('mastery-compare',help='Compara duas avaliações do mesmo benchmark')
     mastery_compare.add_argument('previous_run_id');mastery_compare.add_argument('current_run_id')
+    cycle=sub.add_parser('learning-cycle',help='Compara estratégias de pesquisa com treino, validação e teste reservado')
+    cycle.add_argument('dataset',help='JSON com train, validation e holdout preparados por humanos')
+    cycle.add_argument('--limits',type=int,nargs='+',default=[4,8,12])
+    cycle.add_argument('--semantic',action='store_true')
+    cycle_report=sub.add_parser('cycle-report',help='Métricas e histórico de um ciclo de aprendizagem')
+    cycle_report.add_argument('run_id')
+    cycle_review=sub.add_parser('cycle-review',help='Plano de releitura usando apenas o conjunto de treino')
+    cycle_review.add_argument('run_id')
+    restudy=sub.add_parser('cycle-restudy',help='Reestuda capítulos onde falhou no treino (com autorização)')
+    restudy.add_argument('run_id')
+    restudy.add_argument('--max-chapters',type=int,default=2)
+    sub.add_parser('cycle-history',help='Histórico local de ciclos de aprendizagem')
     report=sub.add_parser('report',help='Mostra estudo anterior com todas as evidências')
     report.add_argument('run_id')
     args=p.parse_args(); settings=Settings.from_env()
@@ -48,7 +61,7 @@ def main():
                 passphrase=settings.database_passphrase,
                 require_encryption=settings.database_encryption_required if not args.db else False)
     engine=DeepBookStudy(db)
-    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare'):
+    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare','learning-cycle','cycle-report','cycle-review','cycle-history','cycle-restudy'):
         reasoning=BookReasoningEngine(db)
         model=OllamaBookModel(settings.ollama_url,settings.ollama_model)
         if args.action=='study-ai':result=asyncio.run(reasoning.study_chapter(args.chapter_id,model))
@@ -65,6 +78,14 @@ def main():
             dataset=json.loads(Path(args.dataset).read_text(encoding='utf-8'))
             enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
             result=asyncio.run(BookMasteryLab(db).assess(dataset,model,encoder=enc,min_f1=args.min_f1))
+        elif args.action=='learning-cycle':
+            dataset=json.loads(Path(args.dataset).read_text(encoding='utf-8'))
+            enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
+            result=asyncio.run(BookIterationLab(db).run(dataset,model,limits=args.limits,encoder=enc))
+        elif args.action=='cycle-report':result=BookIterationLab(db).report(args.run_id)
+        elif args.action=='cycle-review':result=BookIterationLab(db).review(args.run_id)
+        elif args.action=='cycle-history':result=BookIterationLab(db).history()
+        elif args.action=='cycle-restudy':result=asyncio.run(BookIterationLab(db).restudy(args.run_id,model,max_chapters=args.max_chapters))
         elif args.action=='mastery-report':result=BookMasteryLab(db).report(args.run_id)
         elif args.action=='mastery-history':result=BookMasteryLab(db).history(args.dataset_hash)
         elif args.action=='mastery-plan':result=BookMasteryLab(db).remediation(args.run_id)
