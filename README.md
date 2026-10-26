@@ -1,8 +1,12 @@
-# Expecto Assistant — Aprendizagem e Pesquisa 4.1 (Patronum)
+# Expecto Assistant — Document Intelligence 4.2 (Patronum)
 
 Assistente pessoal local com interface holográfica sem botões ou barras laterais, memória persistente, motor de aprendizagem documental e comando **"Ativa Patronum"**.
 
 > Versão experimental. A integração real com SQLCipher, DSPy e Ollama depende das bibliotecas e modelos instalados; não representa capacidades impossíveis nem uma arma.
+
+## Novidade 4.2 — Leitura estruturada opcional com Docling
+
+O importador aceita `--parser pymupdf|docling|auto`; o Docling pode recuperar a estrutura de tabelas e fórmulas, preservando a proveniência por página quando disponível. Instala com `pip install -r requirements-docling.txt`. Consulta [o guia](docs/DOCLING_42.md). Ainda não foram feitos testes end-to-end com o Docling real.
 
 ## Novidade 3.9 — Mastery Lab (avaliação independente)
 
