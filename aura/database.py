@@ -83,6 +83,8 @@ class Database:
             BookSemanticIndex.migrate(db)
             from .book_mastery import BookMasteryLab
             BookMasteryLab.migrate(db)
+            from .book_iteration import BookIterationLab
+            BookIterationLab.migrate(db)
 
     @contextmanager
     def connect(self):
