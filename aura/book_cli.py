@@ -9,7 +9,7 @@ def main():
     p=argparse.ArgumentParser(description='AURA: biblioteca PDF local com citações por página')
     p.add_argument('--db',default=None,help='Caminho da base (predefinição: Settings da AURA)')
     sub=p.add_subparsers(dest='action',required=True)
-    imp=sub.add_parser('import');imp.add_argument('file');imp.add_argument('--rights',required=True)
+    imp=sub.add_parser('import');imp.add_argument('file');imp.add_argument('--rights',required=True);imp.add_argument('--parser',choices=['pymupdf','docling','auto'],default='pymupdf')
     q=sub.add_parser('search');q.add_argument('question')
     sub.add_parser('list')
     rm=sub.add_parser('delete');rm.add_argument('book_id')
@@ -17,7 +17,7 @@ def main():
     db=Database(Path(args.db) if args.db else settings.data_dir/'aura.sqlite3',passphrase=settings.database_passphrase,
                 require_encryption=settings.database_encryption_required if not args.db else False)
     engine=BookLearningEngine(db)
-    if args.action=='import':result=engine.import_pdf(args.file,rights_confirmed=True,rights_note=args.rights)
+    if args.action=='import':result=engine.import_pdf(args.file,rights_confirmed=True,rights_note=args.rights,parser=args.parser)
     elif args.action=='search':result=engine.search(args.question)
     elif args.action=='list':result=engine.books()
     else:result={'deleted':engine.delete_book(args.book_id)}
