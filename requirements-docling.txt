@@ -1,0 +1,2 @@
+# Optional document pipeline; original reader works without this dependency.
+docling>=2.70,<3
