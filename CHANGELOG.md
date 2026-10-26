@@ -116,3 +116,9 @@ Motor local de ingestão PDF com FTS5, páginas/citações, verificações de in
 - Comandos CLI `learning-cycle`, `cycle-report`, `cycle-review`, `cycle-restudy` (opt-in) e `cycle-history`.
 - Mantém livro/PDF, pesquisas locais e compatibilidade com bases 3.9; não envia dados para serviços externos por predefinição.
 - **Limite:** o ciclo melhora escolhas de recuperação e avaliações; não é fine-tuning, aprendizagem de pesos ou prova de compreensão de livros.
+
+## 4.1 — Cross-Book Research
+- `aura/book_research.py`: agregação multi-pergunta por reciprocal rank fusion, diversidade de livros, deduplicação de excertos, cobertura e auditoria de integridade da evidência.
+- CLI `research-books`: consulta documental por várias questões, opcionalmente com Ollama embeddings.
+- Casos de teste para limites, cobertura, perguntas sem evidência e adulteração de resultados.
+- Pesquisa de componentes GitHub: Docling (MIT), FastEmbed (Apache-2.0), GraphRAG (MIT, manutenção). Integração integral não efetuada para evitar dependências e custos não validados.
