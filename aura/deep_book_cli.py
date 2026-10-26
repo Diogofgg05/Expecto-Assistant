@@ -6,6 +6,7 @@ from .database import Database
 from .deep_books import DeepBookStudy
 from .book_reasoning import BookReasoningEngine,OllamaBookModel
 from .book_semantics import BookSemanticIndex,OllamaBookEncoder
+from .book_mastery import BookMasteryLab
 
 def main():
     p=argparse.ArgumentParser()
@@ -28,6 +29,18 @@ def main():
     check.add_argument('dataset',help='Ficheiro JSON com casos manualmente verificados')
     check.add_argument('--semantic',action='store_true')
     question.add_argument('--semantic',action='store_true',help='Usar embeddings locais previamente indexados')
+    mastery=sub.add_parser('mastery-check',help='Avalia compreensão com questões externas e fontes gold revistas por humanos')
+    mastery.add_argument('dataset',help='JSON de questões com curation=human_reviewed')
+    mastery.add_argument('--semantic',action='store_true')
+    mastery.add_argument('--min-f1',type=float,default=0.65)
+    mastery_report=sub.add_parser('mastery-report',help='Mostra avaliação persistida e lacunas por capítulo')
+    mastery_report.add_argument('run_id')
+    mastery_history=sub.add_parser('mastery-history',help='Histórico de testes de compreensão')
+    mastery_history.add_argument('--dataset-hash',default=None)
+    mastery_plan=sub.add_parser('mastery-plan',help='Plano de novo estudo baseado nos erros')
+    mastery_plan.add_argument('run_id')
+    mastery_compare=sub.add_parser('mastery-compare',help='Compara duas avaliações do mesmo benchmark')
+    mastery_compare.add_argument('previous_run_id');mastery_compare.add_argument('current_run_id')
     report=sub.add_parser('report',help='Mostra estudo anterior com todas as evidências')
     report.add_argument('run_id')
     args=p.parse_args(); settings=Settings.from_env()
@@ -35,7 +48,7 @@ def main():
                 passphrase=settings.database_passphrase,
                 require_encryption=settings.database_encryption_required if not args.db else False)
     engine=DeepBookStudy(db)
-    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map'):
+    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare'):
         reasoning=BookReasoningEngine(db)
         model=OllamaBookModel(settings.ollama_url,settings.ollama_model)
         if args.action=='study-ai':result=asyncio.run(reasoning.study_chapter(args.chapter_id,model))
@@ -48,6 +61,14 @@ def main():
             if not settings.embedding_model: raise SystemExit('Define AURA_EMBEDDING_MODEL para indexar')
             enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url)
             result=asyncio.run(BookSemanticIndex(db).index_book(args.book_id,enc))
+        elif args.action=='mastery-check':
+            dataset=json.loads(Path(args.dataset).read_text(encoding='utf-8'))
+            enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
+            result=asyncio.run(BookMasteryLab(db).assess(dataset,model,encoder=enc,min_f1=args.min_f1))
+        elif args.action=='mastery-report':result=BookMasteryLab(db).report(args.run_id)
+        elif args.action=='mastery-history':result=BookMasteryLab(db).history(args.dataset_hash)
+        elif args.action=='mastery-plan':result=BookMasteryLab(db).remediation(args.run_id)
+        elif args.action=='mastery-compare':result=BookMasteryLab(db).compare(args.previous_run_id,args.current_run_id)
         elif args.action=='benchmark':
             enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
             data=json.loads(Path(args.dataset).read_text(encoding='utf-8'))
