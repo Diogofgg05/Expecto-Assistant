@@ -77,6 +77,10 @@ class Database:
             FactChecker.migrate(db)
             from .books import BookLearningEngine
             BookLearningEngine.migrate(db)
+            from .book_reasoning import BookReasoningEngine
+            BookReasoningEngine.migrate(db)
+            from .book_semantics import BookSemanticIndex
+            BookSemanticIndex.migrate(db)
 
     @contextmanager
     def connect(self):

@@ -47,10 +47,39 @@ class AuraEngine:
 
     async def command(self, original: str, history: list[dict] | None = None) -> dict:
         original = original.strip()
-        original = re.sub(r'^aura[,\s:]+', '', original, flags=re.I).strip()
+        original = re.sub(r'^(?:aura|expecto)[,\s:]+', '', original, flags=re.I).strip()
         key = normalized(original).rstrip('.!?')
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
+
+        # Book-grounded natural questions: only imported/authorized PDF passages.
+        m=re.match(r'^(?:segundo os livros|pesquisa nos livros|consulta os livros)\s*[:,-]?\s+(.+)$',original,re.I)
+        if m:
+            from .book_reasoning import BookReasoningEngine,OllamaBookModel
+            from .books import BookLearningEngine
+            if not BookLearningEngine(self.db).books():
+                return reply('Ainda não tenho livros PDF autorizados importados para consultar.')
+            q=m.group(1).strip()
+            if not q:
+                return reply('Indica a pergunta que queres investigar nos livros.')
+            try:
+                core=BookReasoningEngine(self.db)
+                model=OllamaBookModel(self.settings.ollama_url,self.settings.ollama_model)
+                encoder=None
+                if self.settings.embedding_model:
+                    from .book_semantics import OllamaBookEncoder
+                    encoder=OllamaBookEncoder(self.settings.embedding_model,self.settings.ollama_url)
+                result=await core.answer(q,model,encoder=encoder)
+            except Exception:
+                return reply('Não consegui consultar o modelo local. Verifica a ligação ao Ollama. Nenhuma memória foi alterada.')
+            if result['abstained']:
+                return reply('Não encontrei evidências suficientes nos livros para responder com segurança. '+
+                             result.get('reason',''))
+            bibliography=[{'id':c['passage_id'],'category':'book',
+              'content':f"{c['title']} · página {c['page']}: {c['quote']}"} for c in result['citations']]
+            return reply(result['answer']+' As passagens estão assinaladas por livro e página. '
+                         'A presença de uma citação não prova por si só que a afirmação seja verdadeira.',
+                         action={'type':'open','panel':'research'},data=bibliography)
 
         # Patronum: user-invoked, bounded orchestration; never executes unsafe tools.
         if key in ('ativa patronum', 'ativar patronum', 'expecto patronum', 'patronum'):

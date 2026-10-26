@@ -1,66 +1,31 @@
-# Expecto Assistant — Patronum 3.6
+# Expecto Assistant — Aprendizagem Profunda 3.8 (Patronum)
 
-**Expecto Assistant** é um assistente de inteligência artificial experimental, orientado à privacidade, que combina uma interface holográfica inspirada em J.A.R.V.I.S. com modelos locais, memória persistente e investigação documental.
+Assistente pessoal local com interface holográfica sem botões ou barras laterais, memória persistente, motor de aprendizagem documental e comando **"Ativa Patronum"**.
 
-**Descrição curta do projeto:** Assistente IA local com interface holográfica sem botões, memória de longo prazo, aprendizagem a partir de PDFs e modo Patronum.
+> Versão experimental. A integração real com SQLCipher, DSPy e Ollama depende das bibliotecas e modelos instalados; não representa capacidades impossíveis nem uma arma.
 
-> **Estado:** protótipo técnico / investigação. O comando **«Ativa Patronum»** coordena funções reais de diagnóstico, memória e investigação; não é uma arma e não atribui capacidades impossíveis ao sistema. A qualidade com Ollama, SQLCipher e DSPy reais ainda requer validação no computador de destino.
+## Melhorias 3.8 — Livro → conceito → aplicação → teste
 
-## Funcionalidades
+- Pesquisa de passagens com **FTS5/BM25 + embeddings Ollama locais opcionais**, com índices persistentes por modelo e hash da passagem.
+- **Mapa de aprendizagem conceptual**: relações entre ideias, possíveis equívocos e exercícios de aplicação com evidências por página. Tudo exige revisão humana.
+- Perguntas ao livro com fontes exatas e rejeição de números não sustentados por citações.
+- Benchmark de recuperação com perguntas/IDs de passagens selecionados por humanos, para medir Hit@k e MRR sem autoavaliação pelo LLM.
+- Mantida a identidade **Expecto**, o modo **Patronum**, o holograma sem sidebars, e a memória anterior.
 
-- **Interface conversacional holográfica:** sem menus, sidebars, páginas ou botões de navegação; espaços surgem e reorganizam-se por comandos naturais.
-- **Modo Patronum:** comando «Ativa Patronum» para diagnóstico, consulta do estado e visualização dedicada.
-- **Memória de longo prazo:** histórico de até seis meses para recuperação por predefinição, memórias semânticas e relações, consolidação e mecanismos de esquecimento.
-- **Privacidade e proteção:** API local, modo privado, backups cifrados; base de dados SQLCipher requer instalação e frase-passe.
-- **Aprendizagem documental:** importação de PDFs com texto, indexação por livro/página, extração de conceitos, resumos e citações, com distinção entre hipótese e facto verificado.
-- **Investigação e avaliação:** histórico de evidências, verificações restritas de factos e laboratório opcional de otimização de estratégias DSPy.
+Manual: [DEEP_BOOK_MASTERY_38.md](docs/DEEP_BOOK_MASTERY_38.md). **Os testes locais não demonstram inteligência geral ou compreensão científica validada.**
+
+## Novidade: aprendizagem aprofundada de livros (3.7)
+
+Incluído o **Book Reasoning Engine**, com estudo integral por capítulos, propostas de conceitos/questões, síntese com citações verificadas e comparação entre livros com Ollama local. O motor antigo de resumos por contagem de palavras continua disponível como alternativa; não é confundido com compreensão profunda. Os resultados do modelo são tratados como propostas não verificadas semanticamente.
+
+Ver [manual de estudo de livros 3.7](docs/BOOK_REASONING_37.md) para instalação, comandos `study-ai`, `ask`, `compare-ai`, migração e limitações. Consulta também os comandos naturais “Expecto, segundo os livros, ...”.
 
 ## Arranque rápido
 
-**Pré-requisitos:** Python 3.11+, pip, e Ollama instalado localmente para funcionalidades com modelo de linguagem. A instalação de SQLCipher pode necessitar de bibliotecas nativas.
-
-**Windows:**
-
-```bat
-install_windows.bat
-copy .env.example .env
-iniciar_expecto.bat
-```
-
-**Linux:**
-
-```bash
-chmod +x install_linux.sh iniciar_expecto.sh
-./install_linux.sh
-cp .env.example .env
-./iniciar_expecto.sh
-```
-
-> Os scripts originais `iniciar_aura.bat` e `iniciar_aura.sh` são mantidos para compatibilidade com instalações antigas.
-
-**Testes:** `python -m pytest -q` após instalar `requirements-dev.txt`. A execução de 25/10/2026 passou 126 testes e ignorou 2 testes dependentes de integrações opcionais.
-
-## Segurança e dados
-
-- Este repositório **não contém** palavras-passe, chaves de API, ficheiros `.env` reais, bases de dados pessoais nem backups.
-- **Nunca** publiques a pasta `data/`, bases SQLite, ficheiros cifrados, segredos ou logs pessoais.
-- A base SQLCipher só deverá ser usada para dados importantes após validação real da instalação, migração e restauro.
-- Os conteúdos recolhidos da internet ou de PDFs são evidências documentais, não provas de verdade por si só.
-
-## Estrutura do projeto
-
-| Pasta / ficheiro | Finalidade |
-|---|---|
-| `aura/` | Código Python dos motores internos, preservado para compatibilidade |
-| `web/` | Interface holográfica Expecto |
-| `docs/` | Arquitetura, subsistemas, Patronum e imagens |
-| `tests/` | Testes automatizados |
-| `benchmarks/` | Casos de avaliação e exemplos |
-| `.env.example` | Configurações de exemplo, sem credenciais |
-
-Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PATRONUM_36.md`](docs/PATRONUM_36.md), [`docs/DEEP_BOOK_STUDY_35.md`](docs/DEEP_BOOK_STUDY_35.md) e [`CHANGELOG.md`](CHANGELOG.md).
-
----
+- **Windows:** executar `install_windows.bat`, configurar `.env` a partir de `.env.example` e iniciar com `iniciar_aura.bat`.
+- **Linux:** executar `install_linux.sh`, configurar `.env` e iniciar com `iniciar_aura.sh`.
+- **Testes:** `python -m pytest -q` (com dependências de desenvolvimento instaladas).
+- **Privacidade:** não publicar `.env`, bases de dados, backups ou credenciais.
 
 ## Histórico técnico
 

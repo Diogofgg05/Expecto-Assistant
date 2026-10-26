@@ -1,3 +1,30 @@
+# Expecto Ultimate 3.8 — Deep Book Mastery (2026-10-26)
+
+- Pesquisa híbrida com FTS5 e embeddings Ollama opcionais (`aura/book_semantics.py`).
+- Cache cifrável de embeddings, hashes, isolamento por livro/capítulo, eliminação em cascata.
+- Mapa de conceitos, equívocos e exercícios de aplicação ancorados em páginas (`learning-map`).
+- Métricas de recuperação Hit@k / MRR com casos anotados, sem autocertificação do modelo.
+- Respostas recusadas quando introduzem números não presentes nas evidências.
+- Preservação de módulos anteriores; migrações aditivas.
+- Testes offline com PDFs gerados e modelos simulados; Ollama real, SQLCipher e DSPy não validados aqui.
+
+---
+
+# Expecto Ultimate 3.7 — Book Reasoning Engine
+
+- Novo motor de aprendizagem de livros `aura/book_reasoning.py`, separado da memória conversacional.
+- Estudo por grupos de todas as passagens de um capítulo, com conceitos, questões e sínteses atribuídas a fontes.
+- Ollama local em modo JSON; rejeição de citações, IDs e sínteses inconsistentes (sem fingir verificação semântica).
+- Pesquisa de respostas limitada ao PDF e capítulo quando pedido, com abstinência sem evidência.
+- Comparação de conceitos entre livros, guardada como avaliação não verificada.
+- Tabelas novas aditivas com integridade referencial e eliminação em cascata.
+- CLI estendida: `study-ai`, `ask`, `report` e `compare-ai`.
+- Perguntas naturais “Expecto, segundo os livros, ...” respondidas a partir de PDFs importados.
+- Preserva Patronum, holograma sem botões, memória de seis meses e requisitos de cifragem existentes.
+- Testes determinísticos com PDFs gerados; modelo Ollama real não testado neste ambiente.
+
+---
+
 ## 3.6 — Expecto / Patronum
 - Novo nome público: Expecto.
 - `Ativa Patronum`: diagnóstico combinado e visual holográfico especial.
