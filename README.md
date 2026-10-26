@@ -1,8 +1,18 @@
-# Expecto Assistant — Aprendizagem Profunda 3.8 (Patronum)
+# Expecto Assistant — Aprendizagem Profunda 3.9 (Patronum)
 
 Assistente pessoal local com interface holográfica sem botões ou barras laterais, memória persistente, motor de aprendizagem documental e comando **"Ativa Patronum"**.
 
 > Versão experimental. A integração real com SQLCipher, DSPy e Ollama depende das bibliotecas e modelos instalados; não representa capacidades impossíveis nem uma arma.
+
+## Novidade 3.9 — Mastery Lab (avaliação independente)
+
+- Avaliação de **respostas inéditas com gabaritos preparados por humanos**: a Expecto recebe apenas as perguntas e passagens, nunca as respostas esperadas ou os IDs *gold*.
+- Notas técnicas transparentes: correspondência lexical F1, recuperação de evidência, abstenção em perguntas sem resposta e sinalização de inversões de polaridade evidentes.
+- **Plano de revisão** das páginas e capítulos em que falhou, histórico por avaliação e comparação apenas de benchmarks exatamente iguais, com deteção de passagens adulteradas.
+- Não há autopromoção a conhecimento comprovado, auto-treino de pesos nem alegação de verdadeira compreensão sem uma avaliação externa com modelo real.
+- CLI: `python -m aura.deep_book_cli mastery-check benchmarks/meu_benchmark.json` e `mastery-plan ID_AVALIACAO`.
+
+Manual: [BOOK_MASTERY_39.md](docs/BOOK_MASTERY_39.md).
 
 ## Melhorias 3.8 — Livro → conceito → aplicação → teste
 
