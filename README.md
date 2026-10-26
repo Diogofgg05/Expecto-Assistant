@@ -1,4 +1,4 @@
-# Expecto Assistant — Aprendizagem Experimental 4.0 (Patronum)
+# Expecto Assistant — Aprendizagem e Pesquisa 4.1 (Patronum)
 
 Assistente pessoal local com interface holográfica sem botões ou barras laterais, memória persistente, motor de aprendizagem documental e comando **"Ativa Patronum"**.
 
@@ -329,3 +329,12 @@ Consultar `docs/DEEP_BOOK_STUDY_35.md`.
 
 
 Ver `docs/PATRONUM_36.md` para o modo Patronum.
+
+
+## Novidade 4.1 — Cross-Book Research
+
+Pesquisa simultânea de até seis questões, fusão de rankings, deduplicação e diversidade entre livros, verificação de origem e relatório de lacunas. Ver [manual 4.1](docs/RESEARCH_41.md).
+
+```bash
+python -m aura.deep_book_cli research-books "O que são matrizes inversas?" "Quando existem matrizes inversas?"
+```
