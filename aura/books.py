@@ -89,7 +89,7 @@ class BookLearningEngine:
             pos=max(pos+1,end-overlap)
         return result
 
-    def import_pdf(self, path, *, rights_confirmed=False, rights_note='', max_mb=40, max_pages=1500):
+    def import_pdf(self, path, *, rights_confirmed=False, rights_note='', max_mb=40, max_pages=1500, parser='pymupdf'):
         if not rights_confirmed or not rights_note.strip():
             raise PermissionError('Confirma autorização de utilização local e regista a licença/origem.')
         p=Path(path).resolve()
@@ -100,20 +100,35 @@ class BookLearningEngine:
         with self.db.connect() as db:
             exists=db.execute('SELECT id FROM book_documents WHERE sha256=?',(datahash,)).fetchone()
             if exists:return {'book_id':exists['id'],'duplicate':True}
+        if parser not in ('pymupdf', 'docling', 'auto'):
+            raise ValueError('Parser inválido. Escolhe pymupdf, docling ou auto.')
         with fitz.open(p) as doc:
             if doc.needs_pass: raise ValueError('PDF protegido por palavra-passe.')
             if len(doc)>max_pages: raise ValueError('PDF excede o limite de páginas.')
-            pages=len(doc); entries=[]
-            for index,page in enumerate(doc):
-                text=page.get_text('text',sort=True)
-                for j,chunk in enumerate(self.chunks(text)):
-                    entries.append((uuid4().hex,index+1,j,chunk,hashlib.sha256(chunk.encode()).hexdigest()))
+            pages=len(doc)
+            basic={i+1:page.get_text('text',sort=True) for i,page in enumerate(doc)}
+        diagnostics={'parser':'pymupdf','pages_with_content':sum(bool(v.strip()) for v in basic.values())}
+        page_text=basic
+        if parser in ('docling','auto'):
+            try:
+                from .book_docling import extract_docling_pages
+                structured, diagnostics = extract_docling_pages(p, pages)
+                page_text=structured
+            except (RuntimeError, ValueError) as exc:
+                if parser=='docling': raise
+                diagnostics={'parser':'pymupdf','fallback_reason':str(exc),
+                             'pages_with_content':sum(bool(v.strip()) for v in basic.values())}
+            # Other Docling failures must surface rather than silently corrupt results.
+        entries=[]
+        for number,text in sorted(page_text.items()):
+            for ordinal,chunk in enumerate(self.chunks(text)):
+                entries.append((uuid4().hex,number,ordinal,chunk,hashlib.sha256(chunk.encode()).hexdigest()))
         if not entries: raise ValueError('PDF sem texto extraível. PDFs digitalizados precisam de OCR autorizado.')
         bookid=uuid4().hex
         with self.db.connect() as db:
             db.execute('INSERT INTO book_documents VALUES(?,?,?,?,?,?,?)',(bookid,p.stem,p.name,datahash,pages,now(),rights_note.strip()))
             db.executemany('INSERT INTO book_passages VALUES(?,?,?,?,?,?)',[(row[0],bookid,*row[1:]) for row in entries])
-        return {'book_id':bookid,'pages':pages,'passages':len(entries),'duplicate':False}
+        return {'book_id':bookid,'pages':pages,'passages':len(entries),'duplicate':False,'extraction':diagnostics}
 
     def books(self):
         with self.db.connect() as db:
