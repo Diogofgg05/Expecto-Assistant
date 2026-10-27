@@ -7,6 +7,7 @@ from .database import Database
 from .research import Researcher
 from .llm import Ollama
 from .identity import Identity, IdentitySettings, MODES
+from .living_intelligence import ContinuityEngine
 from .memory import MemoryEngine
 from .cognition import KnowledgeExtractor
 from .config import Settings
@@ -44,6 +45,7 @@ class AuraEngine:
         self.quality = KnowledgeQuality(db)
         self.factcheck = FactChecker(db)
         self.secure_backups = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
+        self.continuity = ContinuityEngine(db)
         self.llm = Ollama(settings, db, self.memory)
 
     async def command(self, original: str, history: list[dict] | None = None) -> dict:
@@ -52,6 +54,27 @@ class AuraEngine:
         key = normalized(original).rstrip('.!?')
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
+
+        if key.startswith('recorda experiencia: '):
+            item = self.continuity.remember(original.split(':', 1)[1])
+            return reply('Registei esta experiência como declaração tua, não como facto verificado.', data={'experience': item})
+        if key in ('mostra experiencias', 'minhas experiencias'):
+            return reply('Estas são as experiências que pediste para registar.', data={'experiences': self.continuity.experiences()})
+        if key.startswith('apaga experiencia '):
+            ident = key.removeprefix('apaga experiencia ').strip()
+            return reply('Experiência apagada.' if self.continuity.forget(ident) else 'Não encontrei essa experiência.')
+        if key.startswith('novo objetivo: '):
+            item = self.continuity.add_goal(original.split(':', 1)[1])
+            return reply('Objetivo guardado. Não farei ações por iniciativa própria sem autorização.', data={'goal': item})
+        if key in ('meus objetivos', 'mostra objetivos'):
+            return reply('Estes são os objetivos registados.', data={'goals': self.continuity.goals()})
+        if key.startswith('concluir objetivo '):
+            ident = key.removeprefix('concluir objetivo ').strip()
+            return reply('Objetivo concluído.' if self.continuity.goal_status(ident, 'done') else 'Não encontrei esse objetivo.')
+        if key in ('expecto, tens sugestoes', 'tens sugestoes', 'sugere proximo passo', 'sugere um proximo passo', 'o que sugeres'):
+            suggestions = self.continuity.suggestions()
+            return reply('Tenho estas sugestões. Só atuo depois de me dares autorização.' if suggestions else
+                         'Ainda não registei objetivos ativos. Podes dizer: novo objetivo: ...', data={'suggestions': suggestions})
 
         if key in ('quem es', 'quem es tu', 'qual e a tua identidade', 'identidade da expecto'):
             ident = Identity()
