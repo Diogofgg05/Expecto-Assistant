@@ -1,4 +1,5 @@
-## Expecto 4.5 — Benchmark independente de raciocínio
+# Expecto Assistant — Verified Reasoning 4.6
+
 
 O módulo `aura/reasoning_benchmark.py` compara respostas simples e raciocínio multicamada em conjuntos separados de validação e teste reservado, usando métricas lexicais, citações e abstenção. Não altera modelos nem aprova melhorias automaticamente. A avaliação não constitui prova de veracidade ou compreensão. Consulte `docs/REASONING_BENCHMARK_45.md`.
 
@@ -354,3 +355,8 @@ Pesquisa simultânea de até seis questões, fusão de rankings, deduplicação 
 ```bash
 python -m aura.deep_book_cli research-books "O que são matrizes inversas?" "Quando existem matrizes inversas?"
 ```
+
+
+## 4.6 — Verificação independente de cálculos
+
+`python -m aura.deep_book_cli reason-verify "Quanto é 125+75?"` recupera fontes dos livros, pede uma resposta estruturada ao Ollama, executa cálculos aritméticos exatos num intérprete AST restrito e pede uma crítica separada. O resultado distingue contas verificadas de alegações documentais não comprovadas. Apenas são suportadas contas com inteiros, +, -, *, / e parênteses; **não executa código do modelo**. Não garante que o modelo devolva expressões para todas as contas que mencionar; não interpreta imagens nem prova a validade das fontes.
