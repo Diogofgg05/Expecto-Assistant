@@ -10,6 +10,7 @@ from .book_mastery import BookMasteryLab
 from .book_iteration import BookIterationLab
 from .book_research import BookResearchEngine
 from .multilayer_reasoning import MultiLayerReasoner, OllamaMultiLayerAdapter, export_graph_html
+from .reasoning_verifier import ReasoningVerifier
 
 def main():
     p=argparse.ArgumentParser()
@@ -22,6 +23,9 @@ def main():
     dimension.add_argument('question');dimension.add_argument('--book',default=None)
     dimension.add_argument('--semantic',action='store_true')
     dimension.add_argument('--html',default=None,help='Guardar visualização 3D local num ficheiro HTML')
+    verified=sub.add_parser('reason-verify',help='Proposta com fontes, crítica e verificação aritmética independente')
+    verified.add_argument('question');verified.add_argument('--book',default=None)
+    verified.add_argument('--semantic',action='store_true')
     ch=sub.add_parser('chapters');ch.add_argument('book_id');ch.add_argument('--pdf',default=None)
     study=sub.add_parser('study');study.add_argument('chapter_id')
     links=sub.add_parser('links');links.add_argument('--book',default=None)
@@ -70,10 +74,17 @@ def main():
                 passphrase=settings.database_passphrase,
                 require_encryption=settings.database_encryption_required if not args.db else False)
     engine=DeepBookStudy(db)
-    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare','learning-cycle','cycle-report','cycle-review','cycle-history','cycle-restudy','research-books','reason-3d'):
+    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare','learning-cycle','cycle-report','cycle-review','cycle-history','cycle-restudy','research-books','reason-3d','reason-verify'):
         reasoning=BookReasoningEngine(db)
         model=OllamaBookModel(settings.ollama_url,settings.ollama_model)
-        if args.action=='reason-3d':
+        if args.action=='reason-verify':
+            enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
+            found=asyncio.run(BookResearchEngine(db).investigate([args.question],encoder=enc,book_id=args.book,limit=8))
+            evidence=[{'id':f"p:{e['passage_id']}",'text':e['text']} for e in found['evidence']]
+            adapter=OllamaMultiLayerAdapter(settings.ollama_url,settings.ollama_model)
+            result=asyncio.run(ReasoningVerifier(adapter).run(args.question,evidence))
+            result['source_pages']=[{'id':f"p:{e['passage_id']}",'title':e['title'],'page':e['page']} for e in found['evidence']]
+        elif args.action=='reason-3d':
             enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
             adapter=OllamaMultiLayerAdapter(settings.ollama_url,settings.ollama_model)
             result=asyncio.run(MultiLayerReasoner(db).reason(args.question,adapter,encoder=enc,book_id=args.book))
