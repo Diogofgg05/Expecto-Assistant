@@ -1,3 +1,11 @@
+## 5.2 — Hybrid Research & Verified Reasoning
+- Orquestrador limitado: planeamento de consultas + RAG híbrido e opcional pesquisa externa SearXNG local.
+- Proveniência por livro/página/hash, web classificada como pré-visualização não verificada.
+- Citações inventadas rejeitadas; crítica textual e cálculo aritmético independente podem reter respostas.
+- `reason-hybrid` no CLI e comando natural explícito; modelo de raciocínio selecionável.
+- Exportação consentida e curada de conjuntos SFT/DPO com holdout separado; treino nunca automático.
+- Experiência LoRA com script isolado e recompensa aritmética experimental, não treino RL real.
+
 ## 5.1 — Adaptive Intelligence / Explicit Reflection (2026-10-27)
 - Motor `aura/reflection.py` para avaliações voluntárias de respostas/sugestões e acompanhamento de objetivos.
 - Propostas de profundidade das explicações baseadas em feedback convergente, sujeitas a aprovação explícita.
