@@ -1,3 +1,7 @@
+## Expecto 4.4 — Auditoria independente das hipóteses
+
+O módulo `aura/evidence_critic.py` sinaliza números sem referência, negações não apoiadas no texto e correspondência lexical fraca. Mantém explicitamente `semantic_entailment_verified=false`: estas verificações não comprovam verdade. Consulte [documentação](docs/EVIDENCE_CRITIC_44.md).
+
 # Expecto Assistant — Multi-Layer Reasoning 4.3
 
 **Novo:** laboratório experimental de raciocínio em camadas (pergunta → evidência → hipóteses → objeções → síntese), com rastreabilidade e exportador 3D opcional. Não é uma nova rede neuronal treinada.
