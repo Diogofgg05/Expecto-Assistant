@@ -155,3 +155,8 @@ Motor local de ingestão PDF com FTS5, páginas/citações, verificações de in
 - Gramática PT-PT limitada para sistemas lineares e matrizes explícitas.
 - Cálculo com frações exatas e apresentação de matriz reduzida.
 - Rejeição de expressões não lineares e sintaxe desconhecida; sem execução de código.
+
+## 4.9 — Identity Core
+- Identidade de comunicação estável, modo persistente opt-in e proteção contra fontes não fidedignas.
+- Integração com o prompt Ollama e comandos naturais.
+- Testes de persistência, modo inválido e recuperação de ficheiro corrupto.
