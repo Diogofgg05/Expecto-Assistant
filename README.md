@@ -1,3 +1,15 @@
+# Expecto Assistant 5.1 — Adaptive Intelligence
+
+**Assistente local com identidade consistente, memória de objetivos e adaptação por feedback explícito.** A 5.1 introduz um motor de reflexão controlado pelo utilizador, sem consciência artificial ou modificação automática de modelos.
+
+**Novidades 5.1:** registo explícito de avaliações, propostas de estilo com aprovação obrigatória, histórico e reversão, progresso/bloqueios de objetivos e sugestões contextuais. Mantém Patronum, o holograma sem botões e a aprendizagem documental. Ver [manual da reflexão](docs/REFLECTION_51.md).
+
+**Exemplos:** «Feedback explicação curta: Quero mais cálculos», «Analisa feedback», «Aprova melhoria ID», «Reverte última melhoria» e «Expecto, tens sugestões?».
+
+**Testes locais:** 227 aprovados e 2 integrações opcionais ignoradas; modelos Ollama/SQLCipher reais ainda não validados nesta versão.
+
+---
+
 > **Novidade 4.7:** verificações determinísticas de Álgebra Linear (determinantes, inversas, produtos, sistemas lineares), sem execução de código do modelo. Ver [manual](docs/ALGEBRA_VERIFIER_47.md).
 
 # Expecto Assistant — Verified Reasoning 4.6
