@@ -73,8 +73,10 @@ class Ollama:
                    '\n'.join(f"- {x['title']}: {x['content'][:350]} [URL: {x['url']}; {x['evidence_level']}]"
                              for x in knowledge))
         from .living_intelligence import ContinuityEngine
+        from .reflection import ReflectionEngine
         continuity_context = ContinuityEngine(self.db).context()
-        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context}]
+        reflection_context = ReflectionEngine(self.db).approved_context()
+        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
         for x in (history or [])[-6:]:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
                 messages.append({'role': x['role'], 'content': x['content'][:1500]})
