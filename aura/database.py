@@ -59,6 +59,8 @@ class Database:
             ''')
             from .living_intelligence import ContinuityEngine
             ContinuityEngine.migrate(db)
+            from .reflection import ReflectionEngine
+            ReflectionEngine.migrate(db)
             self._migrate_memories(db)
             self._migrate_episodes(db)
             self._migrate_cognitive_memory(db)
