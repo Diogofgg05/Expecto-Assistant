@@ -57,6 +57,8 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS ix_knowledge_topic ON knowledge(topic);
             ''')
+            from .living_intelligence import ContinuityEngine
+            ContinuityEngine.migrate(db)
             self._migrate_memories(db)
             self._migrate_episodes(db)
             self._migrate_cognitive_memory(db)
