@@ -1,5 +1,24 @@
 # Expecto Assistant 5.2 — Hybrid Research & Verified Reasoning
 
+## Galeria de 20 previews
+
+> **Transparência:** as imagens 01–10 são capturas do frontend real da Expecto **com dados fictícios injetados para demonstração**. As imagens 11–20 são **mockups conceptuais**, não ecrãs implementados nem provas de execução real dos modelos. Todos os exemplos são ilustrativos.
+
+| Interface existente — dados fictícios | Exemplo / conceito visual |
+| :--- | :--- |
+| [<img src="docs/previews/01-01-inicio-holografico.png" alt="Ecrã inicial" width="100%"><br>01 · Ecrã inicial](docs/previews/01-01-inicio-holografico.png) | [<img src="docs/previews/02-02-memoria-autobiografica.png" alt="Memória autobiográfica" width="100%"><br>02 · Memória autobiográfica](docs/previews/02-02-memoria-autobiografica.png) |
+| [<img src="docs/previews/03-03-patronum-ativado.png" alt="Patronum ativado" width="100%"><br>03 · Patronum ativado](docs/previews/03-03-patronum-ativado.png) | [<img src="docs/previews/04-04-investigacao-documental.png" alt="Investigação documental" width="100%"><br>04 · Investigação documental](docs/previews/04-04-investigacao-documental.png) |
+| [<img src="docs/previews/05-05-pesquisa-de-fontes.png" alt="Fontes e pesquisa" width="100%"><br>05 · Fontes e pesquisa](docs/previews/05-05-pesquisa-de-fontes.png) | [<img src="docs/previews/06-06-diagnosticos-sistema.png" alt="Diagnósticos" width="100%"><br>06 · Diagnósticos](docs/previews/06-06-diagnosticos-sistema.png) |
+| [<img src="docs/previews/07-07-projetos-e-objetivos.png" alt="Projetos e objetivos" width="100%"><br>07 · Projetos e objetivos](docs/previews/07-07-projetos-e-objetivos.png) | [<img src="docs/previews/08-08-investigacao-agendada.png" alt="Investigações agendadas" width="100%"><br>08 · Investigações agendadas](docs/previews/08-08-investigacao-agendada.png) |
+| [<img src="docs/previews/09-09-memoria-e-pesquisa.png" alt="Memória + investigação" width="100%"><br>09 · Memória + investigação](docs/previews/09-09-memoria-e-pesquisa.png) | [<img src="docs/previews/10-10-patronum-com-diagnosticos.png" alt="Patronum + diagnósticos" width="100%"><br>10 · Patronum + diagnósticos](docs/previews/10-10-patronum-com-diagnosticos.png) |
+| [<img src="docs/previews/11-11-pesquisa-rag-hibrido.png" alt="Pesquisa RAG híbrida" width="100%"><br>11 · Pesquisa RAG híbrida](docs/previews/11-11-pesquisa-rag-hibrido.png) | [<img src="docs/previews/12-12-leitura-de-pdf.png" alt="Leitura de PDF" width="100%"><br>12 · Leitura de PDF](docs/previews/12-12-leitura-de-pdf.png) |
+| [<img src="docs/previews/13-13-extracao-de-tabelas.png" alt="Tabelas e fórmulas" width="100%"><br>13 · Tabelas e fórmulas](docs/previews/13-13-extracao-de-tabelas.png) | [<img src="docs/previews/14-14-raciocinio-multicamadas.png" alt="Raciocínio multicamada" width="100%"><br>14 · Raciocínio multicamada](docs/previews/14-14-raciocinio-multicamadas.png) |
+| [<img src="docs/previews/15-15-critica-de-evidencias.png" alt="Crítica de evidências" width="100%"><br>15 · Crítica de evidências](docs/previews/15-15-critica-de-evidencias.png) | [<img src="docs/previews/16-16-verificacao-de-matematica.png" alt="Verificação matemática" width="100%"><br>16 · Verificação matemática](docs/previews/16-16-verificacao-de-matematica.png) |
+| [<img src="docs/previews/17-17-estudo-de-algebra.png" alt="Álgebra passo a passo" width="100%"><br>17 · Álgebra passo a passo](docs/previews/17-17-estudo-de-algebra.png) | [<img src="docs/previews/18-18-laboratorio-de-avaliacao.png" alt="Avaliação independente" width="100%"><br>18 · Avaliação independente](docs/previews/18-18-laboratorio-de-avaliacao.png) |
+| [<img src="docs/previews/19-19-aprendizagem-e-feedback.png" alt="Adaptação e feedback" width="100%"><br>19 · Adaptação e feedback](docs/previews/19-19-aprendizagem-e-feedback.png) | [<img src="docs/previews/20-20-grafo-de-conhecimento-3d.png" alt="Grafo 3D — conceito" width="100%"><br>20 · Grafo 3D — conceito](docs/previews/20-20-grafo-de-conhecimento-3d.png) |
+
+[Ver a galeria detalhada e a classificação de cada imagem](docs/previews/README.md).
+
 **Novo na 5.2:** orquestrador de investigação com modelo Ollama local configurável, RAG híbrido (FTS5 + embeddings opcionais), pesquisa externa **opt-in** via SearXNG em loopback, auditoria de citações e cálculos, preparação local de datasets SFT/DPO com consentimento, script opcional de LoRA e protótipo de recompensa aritmética para investigação futura de RL. Nenhum treino de pesos nem GRPO é executado automaticamente. Respostas fundamentadas continuam sem ser consideradas provas de verdade.
 
 **Validação 5.2:** 246 testes passaram, 2 integrações opcionais ignoradas; a precisão do Ollama real e os ganhos sobre a estratégia anterior ainda não foram medidos. Para treino experimental isolado, consultar `requirements-training.txt`.
