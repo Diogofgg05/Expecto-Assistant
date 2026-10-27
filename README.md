@@ -1,3 +1,11 @@
+# Expecto Assistant 5.2 — Hybrid Research & Verified Reasoning
+
+**Novo na 5.2:** orquestrador de investigação com modelo Ollama local configurável, RAG híbrido (FTS5 + embeddings opcionais), pesquisa externa **opt-in** via SearXNG em loopback, auditoria de citações e cálculos, preparação local de datasets SFT/DPO com consentimento, script opcional de LoRA e protótipo de recompensa aritmética para investigação futura de RL. Nenhum treino de pesos nem GRPO é executado automaticamente. Respostas fundamentadas continuam sem ser consideradas provas de verdade.
+
+**Início:** `python -m aura.deep_book_cli reason-hybrid "O que é um subespaço vetorial?"` — consulta a [arquitetura 5.2](docs/REASONING_ARCHITECTURE_52.md) para pesquisa web local, modelos alternativos e preparação de dados de treino.
+
+---
+
 # Expecto Assistant 5.1 — Adaptive Intelligence
 
 **Assistente local com identidade consistente, memória de objetivos e adaptação por feedback explícito.** A 5.1 introduz um motor de reflexão controlado pelo utilizador, sem consciência artificial ou modificação automática de modelos.
