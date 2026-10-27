@@ -1,3 +1,9 @@
+## 4.3 — Multi-Layer Evidence Reasoning
+- Motor de hipóteses contrastadas, críticas e proveniência; JSON seguro e limites explícitos.
+- Exportador HTML 3D opcional com 3d-force-graph; sem alteração da interface principal.
+- Testes de referências inventadas, falta de evidências e sanitização de HTML.
+- Sem promessas de ganho neuronal; falta benchmark real Ollama.
+
 ## 3.9 — Book Mastery Lab (26-10-2026)
 
 - Novo motor `aura/book_mastery.py` para avaliação de questões independentes, escolhidas/revistas por humanos, sobre passagens de PDFs autorizados.
