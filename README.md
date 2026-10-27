@@ -362,3 +362,11 @@ python -m aura.deep_book_cli research-books "O que são matrizes inversas?" "Qua
 ## 4.6 — Verificação independente de cálculos
 
 `python -m aura.deep_book_cli reason-verify "Quanto é 125+75?"` recupera fontes dos livros, pede uma resposta estruturada ao Ollama, executa cálculos aritméticos exatos num intérprete AST restrito e pede uma crítica separada. O resultado distingue contas verificadas de alegações documentais não comprovadas. Apenas são suportadas contas com inteiros, +, -, *, / e parênteses; **não executa código do modelo**. Não garante que o modelo devolva expressões para todas as contas que mencionar; não interpreta imagens nem prova a validade das fontes.
+
+## Expecto 4.8 — Álgebra em linguagem natural (suporte limitado)
+
+`python -m aura.deep_book_cli solve-natural "Resolve 2x+y=5; x-y=1"`
+
+`python -m aura.deep_book_cli solve-natural "Calcula o determinante de [[2,1],[3,4]]"`
+
+O parser determinístico suporta sistemas lineares de 2–3 equações (x, y, z), determinantes e inversas com matrizes explícitas. Recusa perguntas ambíguas. Não interpreta qualquer exercício livre e não modifica os pesos do modelo.
