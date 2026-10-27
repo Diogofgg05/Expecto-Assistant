@@ -2,6 +2,8 @@
 
 **Novo na 5.2:** orquestrador de investigação com modelo Ollama local configurável, RAG híbrido (FTS5 + embeddings opcionais), pesquisa externa **opt-in** via SearXNG em loopback, auditoria de citações e cálculos, preparação local de datasets SFT/DPO com consentimento, script opcional de LoRA e protótipo de recompensa aritmética para investigação futura de RL. Nenhum treino de pesos nem GRPO é executado automaticamente. Respostas fundamentadas continuam sem ser consideradas provas de verdade.
 
+**Validação 5.2:** 246 testes passaram, 2 integrações opcionais ignoradas; a precisão do Ollama real e os ganhos sobre a estratégia anterior ainda não foram medidos. Para treino experimental isolado, consultar `requirements-training.txt`.
+
 **Início:** `python -m aura.deep_book_cli reason-hybrid "O que é um subespaço vetorial?"` — consulta a [arquitetura 5.2](docs/REASONING_ARCHITECTURE_52.md) para pesquisa web local, modelos alternativos e preparação de dados de treino.
 
 ---
