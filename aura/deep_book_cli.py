@@ -11,6 +11,7 @@ from .book_iteration import BookIterationLab
 from .book_research import BookResearchEngine
 from .multilayer_reasoning import MultiLayerReasoner, OllamaMultiLayerAdapter, export_graph_html
 from .reasoning_verifier import ReasoningVerifier
+from .algebra_verifier import verify_task
 
 def main():
     p=argparse.ArgumentParser()
@@ -26,6 +27,8 @@ def main():
     verified=sub.add_parser('reason-verify',help='Proposta com fontes, crítica e verificação aritmética independente')
     verified.add_argument('question');verified.add_argument('--book',default=None)
     verified.add_argument('--semantic',action='store_true')
+    algebra=sub.add_parser('verify-algebra',help='Verifica matrizes e sistemas lineares usando frações exatas')
+    algebra.add_argument('json_file',help='JSON com o problema e resultado afirmado')
     ch=sub.add_parser('chapters');ch.add_argument('book_id');ch.add_argument('--pdf',default=None)
     study=sub.add_parser('study');study.add_argument('chapter_id')
     links=sub.add_parser('links');links.add_argument('--book',default=None)
@@ -69,7 +72,11 @@ def main():
     sub.add_parser('cycle-history',help='Histórico local de ciclos de aprendizagem')
     report=sub.add_parser('report',help='Mostra estudo anterior com todas as evidências')
     report.add_argument('run_id')
-    args=p.parse_args(); settings=Settings.from_env()
+    args=p.parse_args()
+    if args.action=='verify-algebra':
+        print(json.dumps(verify_task(json.loads(Path(args.json_file).read_text(encoding='utf-8'))),ensure_ascii=False,indent=2))
+        return
+    settings=Settings.from_env()
     db=Database(Path(args.db) if args.db else settings.data_dir/'aura.sqlite3',
                 passphrase=settings.database_passphrase,
                 require_encryption=settings.database_encryption_required if not args.db else False)
