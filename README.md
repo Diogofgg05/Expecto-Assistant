@@ -370,3 +370,8 @@ python -m aura.deep_book_cli research-books "O que são matrizes inversas?" "Qua
 `python -m aura.deep_book_cli solve-natural "Calcula o determinante de [[2,1],[3,4]]"`
 
 O parser determinístico suporta sistemas lineares de 2–3 equações (x, y, z), determinantes e inversas com matrizes explícitas. Recusa perguntas ambíguas. Não interpreta qualquer exercício livre e não modifica os pesos do modelo.
+
+
+## Expecto 4.9 — identidade própria
+
+A Expecto dispõe de princípios estáveis e quatro modos de comunicação (`equilibrado`, `cientifico`, `criativo`, `professor`) guardados localmente por opção explícita. Diz «Quem és?» ou «Ativa modo professor». Ver [IDENTITY_49.md](docs/IDENTITY_49.md). Identidade de aplicação, não consciência artificial.
