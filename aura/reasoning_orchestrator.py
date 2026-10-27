@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlparse
 
+import httpx
+
 from .book_research import BookResearchEngine
 from .evidence_critic import audit_claim
 from .reasoning_verifier import check_calculations, VerificationError
@@ -131,7 +133,7 @@ class ReasoningOrchestrator:
                         queries.append(query)
                     if len(queries) >= self.config.max_queries:
                         break
-        except (ValueError, TypeError, KeyError, TimeoutError, json.JSONDecodeError, OSError) as ex:
+        except (ValueError, TypeError, KeyError, TimeoutError, json.JSONDecodeError, OSError, httpx.HTTPError) as ex:
             meta['limitations'].append('Plano de pesquisa indisponível; usada pergunta original')
         meta['research_queries'] = queries
 
@@ -180,7 +182,7 @@ class ReasoningOrchestrator:
         try:
             proposal = _parse(await self.model(json.dumps(request, ensure_ascii=False)))
             meta['model_calls'] += 1
-        except (ValueError, TypeError, TimeoutError, KeyError, json.JSONDecodeError, OSError):
+        except (ValueError, TypeError, TimeoutError, KeyError, json.JSONDecodeError, OSError, httpx.HTTPError):
             meta['limitations'].append('Modelo não produziu uma proposta estruturada válida')
             return meta
         answer = _text(proposal.get('answer'), 2600)
