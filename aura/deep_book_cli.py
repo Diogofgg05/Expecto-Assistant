@@ -1,5 +1,5 @@
 """Run: python -m aura.deep_book_cli --db PATH chapters|study|links ..."""
-import argparse,json,asyncio
+import argparse,json,asyncio,os
 from pathlib import Path
 from .config import Settings
 from .database import Database
@@ -13,11 +13,23 @@ from .multilayer_reasoning import MultiLayerReasoner, OllamaMultiLayerAdapter, e
 from .reasoning_verifier import ReasoningVerifier
 from .algebra_verifier import verify_task
 from .algebra_natural import explain
+from .reasoning_orchestrator import ReasoningOrchestrator, LocalSearxngSearch, OrchestrationConfig
+from .training_lab import prepare_training_data
 
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--db',default=None)
     sub=p.add_subparsers(dest='action',required=True)
+    hybrid=sub.add_parser('reason-hybrid',help='Orquestrador: RAG híbrido + Ollama + web local opcional + auditoria')
+    hybrid.add_argument('question')
+    hybrid.add_argument('--semantic',action='store_true')
+    hybrid.add_argument('--external',action='store_true',help='Pesquisar via SearXNG local explicitamente configurado')
+    hybrid.add_argument('--book',default=None)
+    hybrid.add_argument('--model',default=None,help='Modelo Ollama de raciocínio; por predefinição o modelo configurado')
+    tuning=sub.add_parser('prepare-tuning',help='Prepara dados SFT/DPO verificados, NÃO treina o modelo')
+    tuning.add_argument('dataset');tuning.add_argument('output')
+    tuning.add_argument('--format',choices=['sft','dpo'],required=True)
+    tuning.add_argument('--i-authorize-export',action='store_true')
     research=sub.add_parser('research-books',help='Pesquisa várias questões com diversidade entre livros e rastreabilidade')
     research.add_argument('questions',nargs='+');research.add_argument('--book',default=None)
     research.add_argument('--semantic',action='store_true');research.add_argument('--limit',type=int,default=10)
@@ -76,6 +88,13 @@ def main():
     report=sub.add_parser('report',help='Mostra estudo anterior com todas as evidências')
     report.add_argument('run_id')
     args=p.parse_args()
+    if args.action=='prepare-tuning':
+        src=Path(args.dataset)
+        if src.stat().st_size>2_000_000:raise SystemExit('Dataset demasiado grande')
+        samples=json.loads(src.read_text(encoding='utf-8'))
+        result=prepare_training_data(samples,args.output,format=args.format,user_authorized=args.i_authorize_export)
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+        return
     if args.action=='solve-natural':
         print(json.dumps(explain(args.question),ensure_ascii=False,indent=2))
         return
@@ -87,10 +106,17 @@ def main():
                 passphrase=settings.database_passphrase,
                 require_encryption=settings.database_encryption_required if not args.db else False)
     engine=DeepBookStudy(db)
-    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare','learning-cycle','cycle-report','cycle-review','cycle-history','cycle-restudy','research-books','reason-3d','reason-verify'):
+    if args.action in ('study-ai','ask','compare-ai','report','index-semantic','benchmark','learning-map','mastery-check','mastery-report','mastery-history','mastery-plan','mastery-compare','learning-cycle','cycle-report','cycle-review','cycle-history','cycle-restudy','research-books','reason-3d','reason-verify','reason-hybrid'):
         reasoning=BookReasoningEngine(db)
         model=OllamaBookModel(settings.ollama_url,settings.ollama_model)
-        if args.action=='reason-verify':
+        if args.action=='reason-hybrid':
+            enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
+            if args.external and not settings.searxng_url:
+                raise SystemExit('Configura AURA_SEARXNG_URL com http://127.0.0.1:PORTA (SearXNG local)')
+            external=LocalSearxngSearch(settings.searxng_url) if args.external else None
+            adapter=OllamaMultiLayerAdapter(settings.ollama_url,args.model or os.getenv('AURA_REASONING_MODEL') or settings.ollama_model)
+            result=asyncio.run(ReasoningOrchestrator(db,adapter,external=external).run(args.question,encoder=enc,book_id=args.book))
+        elif args.action=='reason-verify':
             enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
             found=asyncio.run(BookResearchEngine(db).investigate([args.question],encoder=enc,book_id=args.book,limit=8))
             evidence=[{'id':f"p:{e['passage_id']}",'text':e['text']} for e in found['evidence']]
