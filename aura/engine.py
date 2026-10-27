@@ -6,6 +6,7 @@ import unicodedata
 from .database import Database
 from .research import Researcher
 from .llm import Ollama
+from .identity import Identity, IdentitySettings, MODES
 from .memory import MemoryEngine
 from .cognition import KnowledgeExtractor
 from .config import Settings
@@ -51,6 +52,17 @@ class AuraEngine:
         key = normalized(original).rstrip('.!?')
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
+
+        if key in ('quem es', 'quem es tu', 'qual e a tua identidade', 'identidade da expecto'):
+            ident = Identity()
+            mode = IdentitySettings(self.settings.data_dir).mode()
+            return reply(f'Sou a {ident.name}, um assistente local com uma identidade de comunicação estável. '
+                         f'A minha missão é: {ident.mission} Modo: {mode}. '
+                         'Não sou uma pessoa nem tenho consciência demonstrada.')
+        match_mode = re.fullmatch(r'(?:ativa |muda para |usa )?modo (equilibrado|cientifico|criativo|professor)', key)
+        if match_mode:
+            new_mode = IdentitySettings(self.settings.data_dir).set_mode(match_mode.group(1))
+            return reply(f'Modo {new_mode} ativado e guardado. A minha identidade e as regras de segurança permanecem iguais.')
 
         # Book-grounded natural questions: only imported/authorized PDF passages.
         m=re.match(r'^(?:segundo os livros|pesquisa nos livros|consulta os livros)\s*[:,-]?\s+(.+)$',original,re.I)
