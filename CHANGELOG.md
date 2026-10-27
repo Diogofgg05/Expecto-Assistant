@@ -1,3 +1,9 @@
+## 4.7 — Exact Linear Algebra Verifier
+- Determinantes, inversas, produtos, sistemas lineares (Fractions).
+- Limites de tamanho e entradas não executáveis; regressões testadas.
+- CLI `verify-algebra` com JSON de entrada.
+- 198 testes aprovados, 2 ignorados (integrações opcionais).
+
 ## 4.6 — Verified Reasoning
 - Verificação independente de aritmética exata com AST restrita, limites de complexidade e sem execução de código.
 - Segundo passo de crítica de respostas; citações limitadas às passagens recuperadas.
