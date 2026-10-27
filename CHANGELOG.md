@@ -160,3 +160,8 @@ Motor local de ingestão PDF com FTS5, páginas/citações, verificações de in
 - Identidade de comunicação estável, modo persistente opt-in e proteção contra fontes não fidedignas.
 - Integração com o prompt Ollama e comandos naturais.
 - Testes de persistência, modo inválido e recuperação de ficheiro corrupto.
+
+## 5.0 — Living Intelligence
+- Memória autobiográfica apenas com consentimento explícito, objetivos persistentes e sugestões locais que exigem autorização para agir.
+- Contexto de identidade adaptativo sem alterar os valores fundamentais.
+- Migração idempotente dentro da base de dados existente e testes de controlo/retensão.
