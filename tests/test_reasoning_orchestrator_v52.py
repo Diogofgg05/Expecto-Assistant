@@ -176,3 +176,14 @@ def test_full_pipeline_with_real_generated_pdf_and_sqlite(tmp_path):
     assert result['status']=='supported_proposal'
     assert result['evidence'][0]['page']==1
     assert result['citations'][0].startswith('p:')
+
+
+def test_ollama_offline_fails_closed():
+    import httpx
+    class Offline:
+        async def __call__(self, prompt):
+            raise httpx.ConnectError('offline')
+    result=go(ReasoningOrchestrator(None,Offline(),research=StubResearch()))
+    assert result['status']=='abstained'
+    assert result['answer']==''
+    assert any('Modelo não produziu' in x for x in result['limitations'])
