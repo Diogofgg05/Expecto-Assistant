@@ -1,3 +1,8 @@
+## 4.4 — Evidence Critic
+- Auditoria determinística de hipóteses por números, negações e suporte lexical.
+- Todas as verificações são sinalizações, não comprovação semântica.
+- Quatro testes adicionais de regressão.
+
 ## 4.3 — Multi-Layer Evidence Reasoning
 - Motor de hipóteses contrastadas, críticas e proveniência; JSON seguro e limites explícitos.
 - Exportador HTML 3D opcional com 3d-force-graph; sem alteração da interface principal.
