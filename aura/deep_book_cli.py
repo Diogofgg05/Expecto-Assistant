@@ -12,6 +12,7 @@ from .book_research import BookResearchEngine
 from .multilayer_reasoning import MultiLayerReasoner, OllamaMultiLayerAdapter, export_graph_html
 from .reasoning_verifier import ReasoningVerifier
 from .algebra_verifier import verify_task
+from .algebra_natural import explain
 
 def main():
     p=argparse.ArgumentParser()
@@ -29,6 +30,8 @@ def main():
     verified.add_argument('--semantic',action='store_true')
     algebra=sub.add_parser('verify-algebra',help='Verifica matrizes e sistemas lineares usando frações exatas')
     algebra.add_argument('json_file',help='JSON com o problema e resultado afirmado')
+    natural=sub.add_parser('solve-natural',help='Interpreta sistemas de 2-3 equações ou determinantes/inversas em português')
+    natural.add_argument('question')
     ch=sub.add_parser('chapters');ch.add_argument('book_id');ch.add_argument('--pdf',default=None)
     study=sub.add_parser('study');study.add_argument('chapter_id')
     links=sub.add_parser('links');links.add_argument('--book',default=None)
@@ -73,6 +76,9 @@ def main():
     report=sub.add_parser('report',help='Mostra estudo anterior com todas as evidências')
     report.add_argument('run_id')
     args=p.parse_args()
+    if args.action=='solve-natural':
+        print(json.dumps(explain(args.question),ensure_ascii=False,indent=2))
+        return
     if args.action=='verify-algebra':
         print(json.dumps(verify_task(json.loads(Path(args.json_file).read_text(encoding='utf-8'))),ensure_ascii=False,indent=2))
         return
