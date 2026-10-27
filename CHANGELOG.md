@@ -1,3 +1,11 @@
+## 5.1 — Adaptive Intelligence / Explicit Reflection (2026-10-27)
+- Motor `aura/reflection.py` para avaliações voluntárias de respostas/sugestões e acompanhamento de objetivos.
+- Propostas de profundidade das explicações baseadas em feedback convergente, sujeitas a aprovação explícita.
+- Mudanças reversíveis com histórico; as notas de feedback nunca entram nas instruções do modelo.
+- Sugestões dependentes de progresso ou bloqueios registados pelo utilizador; nenhuma execução automática.
+- Novos comandos conversacionais, migração aditiva na base de dados e 12 testes de regressão.
+- 227 testes aprovados e 2 integrações opcionais não executadas, sem treino neuronal demonstrado.
+
 ## 4.7 — Exact Linear Algebra Verifier
 - Determinantes, inversas, produtos, sistemas lineares (Fractions).
 - Limites de tamanho e entradas não executáveis; regressões testadas.
