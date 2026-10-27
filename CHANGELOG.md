@@ -150,3 +150,8 @@ Motor local de ingestão PDF com FTS5, páginas/citações, verificações de in
 - CLI `research-books`: consulta documental por várias questões, opcionalmente com Ollama embeddings.
 - Casos de teste para limites, cobertura, perguntas sem evidência e adulteração de resultados.
 - Pesquisa de componentes GitHub: Docling (MIT), FastEmbed (Apache-2.0), GraphRAG (MIT, manutenção). Integração integral não efetuada para evitar dependências e custos não validados.
+
+## 4.8 — Natural Algebra Reasoning
+- Gramática PT-PT limitada para sistemas lineares e matrizes explícitas.
+- Cálculo com frações exatas e apresentação de matriz reduzida.
+- Rejeição de expressões não lineares e sintaxe desconhecida; sem execução de código.
