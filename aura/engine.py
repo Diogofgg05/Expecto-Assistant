@@ -8,6 +8,7 @@ from .research import Researcher
 from .llm import Ollama
 from .identity import Identity, IdentitySettings, MODES
 from .living_intelligence import ContinuityEngine
+from .reflection import ReflectionEngine
 from .memory import MemoryEngine
 from .cognition import KnowledgeExtractor
 from .config import Settings
@@ -46,6 +47,7 @@ class AuraEngine:
         self.factcheck = FactChecker(db)
         self.secure_backups = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
         self.continuity = ContinuityEngine(db)
+        self.reflection = ReflectionEngine(db)
         self.llm = Ollama(settings, db, self.memory)
 
     async def command(self, original: str, history: list[dict] | None = None) -> dict:
@@ -54,6 +56,72 @@ class AuraEngine:
         key = normalized(original).rstrip('.!?')
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
+
+        # v5.1: Reflection is opt-in; feedback notes are never treated as instructions.
+        m=re.match(r'^feedback explicacao (curta|longa|boa)\s*:\s*(.*)$',key)
+        if m:
+            rating={'curta':'too_short','longa':'too_long','boa':'helpful'}[m.group(1)]
+            note=original.split(':',1)[1].strip()
+            item=self.reflection.feedback('explanation',rating,note)
+            return reply('Feedback explícito registado. Só adapto o estilo após a tua aprovação.',
+                         data={'feedback':item})
+        m=re.match(r'^feedback sugestao (util|inutil) ([a-f0-9]{32})(?:\s*:\s*(.*))?$',key)
+        if m:
+            note=original.split(':',1)[1].strip() if ':' in original else ''
+            try:
+                item=self.reflection.feedback('suggestion',
+                    'helpful' if m.group(1)=='util' else 'unhelpful',note,m.group(2))
+            except ValueError as ex:
+                return reply('Não guardei a avaliação: '+str(ex))
+            return reply('Avaliação guardada. Vou ter em conta esta preferência quando pedires sugestões.',
+                         data={'feedback':item})
+        if key in ('analisa feedback', 'reflete sobre o feedback', 'avalia a tua evolucao'):
+            outcome=self.reflection.proposal()
+            if outcome['status']=='pending':
+                return reply('Tenho uma proposta de ajuste ao detalhe das explicações. '
+                             'Precisa da tua aprovação explícita.',data=outcome)
+            if outcome['status']=='already_suitable':
+                return reply('O estilo aprovado já corresponde ao feedback recente.',data=outcome)
+            return reply('Ainda não há feedback consistente suficiente para sugerir uma alteração.',data=outcome)
+        if key in ('estado da reflexao', 'mostra o feedback', 'que aprendeste com o feedback'):
+            return reply('Aqui estão as avaliações explícitas e as adaptações aprovadas. '
+                         'Isto não é treino dos pesos do modelo.',
+                         data={'setting':self.reflection.setting(),
+                               'feedback':self.reflection.feedback_history(),
+                               'proposals':self.reflection.proposals()})
+        m=re.fullmatch(r'(aprova|rejeita) (?:a )?(?:melhoria|adaptacao) ([a-f0-9]{32})',key)
+        if m:
+            try:
+                outcome=self.reflection.decide(m.group(2),'approve' if m.group(1)=='aprova' else 'reject')
+            except ValueError as ex:
+                return reply('Não foi possível rever a proposta: '+str(ex))
+            return reply('Preferência aplicada com aprovação explícita.' if outcome['applied'] else
+                         'Proposta rejeitada; o estilo permanece igual.',data=outcome)
+        if key in ('reverte ultima melhoria','desfaz ultima adaptacao','reverte a ultima adaptacao'):
+            outcome=self.reflection.rollback()
+            return reply('Reverti a última adaptação de comunicação.' if outcome['reverted'] else
+                         'Não existem adaptações ativas para reverter.',data=outcome)
+        m=re.fullmatch(r'apaga feedback ([a-f0-9]{32})',key)
+        if m:
+            removed=self.reflection.delete_feedback(m.group(1))
+            return reply('Feedback eliminado.' if removed else 'Não encontrei essa avaliação.')
+
+        m=re.match(r'^(avancei|bloqueio) no objetivo ([a-f0-9]{32})\s*:\s*(.+)$',key)
+        if m:
+            state='progress' if m.group(1)=='avancei' else 'blocked'
+            try:
+                item=self.reflection.checkin(m.group(2),state,original.split(':',1)[1])
+            except ValueError as ex:
+                return reply('Não guardei o progresso: '+str(ex))
+            return reply('Registo guardado como declaração tua; não executei nenhuma ação.',data={'checkin':item})
+        m=re.fullmatch(r'(?:historico|progresso) do objetivo ([a-f0-9]{32})',key)
+        if m:
+            return reply('Aqui estão os registos explícitos deste objetivo.',
+                         data={'checkins':self.reflection.checkins(m.group(1))})
+        m=re.fullmatch(r'apaga registo de progresso ([a-f0-9]{32})',key)
+        if m:
+            return reply('Registo de progresso apagado.' if self.reflection.delete_checkin(m.group(1)) else
+                         'Não encontrei esse registo.')
 
         if key.startswith('recorda experiencia: '):
             item = self.continuity.remember(original.split(':', 1)[1])
