@@ -1,3 +1,5 @@
+> **Novidade 4.7:** verificações determinísticas de Álgebra Linear (determinantes, inversas, produtos, sistemas lineares), sem execução de código do modelo. Ver [manual](docs/ALGEBRA_VERIFIER_47.md).
+
 # Expecto Assistant — Verified Reasoning 4.6
 
 
