@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 from .book_research import BookResearchEngine
+from .evidence_critic import audit_claim
 
 MAX_EVIDENCE = 12
 MAX_HYPOTHESES = 4
@@ -97,8 +98,10 @@ class MultiLayerReasoner:
                 continue
             citations=list(dict.fromkeys(citations))
             hid=f'h:{len(hypotheses)+1}'
+            audit=audit_claim(claim,[byid[c]['text'] for c in citations])
             h={'id':hid,'claim':claim,'objection':objection,'evidence_ids':citations,
-               'status':'hypothesis_not_verified'}
+               'status':'hypothesis_requires_review' if audit['flags'] else 'hypothesis_not_verified',
+               'audit':audit}
             hypotheses.append(h)
             graph['nodes'].append({'id':hid,'layer':2,'kind':'hypothesis','label':claim})
             for c in citations:graph['links'].append({'source':c,'target':hid,'relation':'cited_by'})
@@ -106,6 +109,8 @@ class MultiLayerReasoner:
             graph['nodes'].append({'id':oid,'layer':3,'kind':'objection','label':objection})
             graph['links'].append({'source':oid,'target':hid,'relation':'challenges'})
         base['layers'].append({'name':'hypotheses','items':hypotheses})
+        base['audit_summary']={'review_needed':sum(bool(h['audit']['flags']) for h in hypotheses),
+                               'unverified_hypotheses':len(hypotheses)}
         if not hypotheses:
             base['limitations'].append('Não foi criada qualquer hipótese com citações válidas')
             return base
