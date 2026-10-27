@@ -72,7 +72,9 @@ class Ollama:
                    '\n\nFontes recolhidas (não verificadas independentemente):\n' +
                    '\n'.join(f"- {x['title']}: {x['content'][:350]} [URL: {x['url']}; {x['evidence_level']}]"
                              for x in knowledge))
-        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context}]
+        from .living_intelligence import ContinuityEngine
+        continuity_context = ContinuityEngine(self.db).context()
+        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context}]
         for x in (history or [])[-6:]:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
                 messages.append({'role': x['role'], 'content': x['content'][:1500]})
