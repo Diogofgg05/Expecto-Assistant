@@ -1,3 +1,7 @@
+# Expecto Assistant — Multi-Layer Reasoning 4.3
+
+**Novo:** laboratório experimental de raciocínio em camadas (pergunta → evidência → hipóteses → objeções → síntese), com rastreabilidade e exportador 3D opcional. Não é uma nova rede neuronal treinada.
+
 # Expecto Assistant — Document Intelligence 4.2 (Patronum)
 
 Assistente pessoal local com interface holográfica sem botões ou barras laterais, memória persistente, motor de aprendizagem documental e comando **"Ativa Patronum"**.
