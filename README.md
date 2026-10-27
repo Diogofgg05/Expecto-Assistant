@@ -375,3 +375,9 @@ O parser determinístico suporta sistemas lineares de 2–3 equações (x, y, z)
 ## Expecto 4.9 — identidade própria
 
 A Expecto dispõe de princípios estáveis e quatro modos de comunicação (`equilibrado`, `cientifico`, `criativo`, `professor`) guardados localmente por opção explícita. Diz «Quem és?» ou «Ativa modo professor». Ver [IDENTITY_49.md](docs/IDENTITY_49.md). Identidade de aplicação, não consciência artificial.
+
+## Expecto 5.0 — Living Intelligence
+
+Continuidade autobiográfica controlada pelo utilizador, objetivos persistentes e sugestões contextuais sem ações autónomas invisíveis. Exemplos de comandos: `recorda experiência: Hoje concluí o meu projeto`, `mostra experiências`, `novo objetivo: Estudar Álgebra`, `meus objetivos`, `tens sugestões`, `concluir objetivo ID` e `apaga experiência ID`.
+
+Os registos de experiências não representam experiências subjetivas da IA, mas sim notas explícitas do utilizador. A identidade mantém-se estável. Ver [documentação da 5.0](docs/LIVING_INTELLIGENCE_50.md).
