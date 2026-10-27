@@ -1,3 +1,7 @@
+## 4.5 — Independent Reasoning Benchmark
+- Separação dev/test, avaliação de citações, respostas e abstenção; retenção do método inicial em caso de regressão.
+- Avaliação independente das respostas esperadas; sem auto-treino de pesos.
+
 ## 4.4 — Evidence Critic
 - Auditoria determinística de hipóteses por números, negações e suporte lexical.
 - Todas as verificações são sinalizações, não comprovação semântica.
