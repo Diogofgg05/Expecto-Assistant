@@ -49,7 +49,7 @@ Exemplo de entrada SFT:
 
 Isto cria `train.jsonl`, `validation.jsonl`, `holdout.jsonl` e `manifest.json`, sem enviar dados a nenhuma nuvem e sem treinar nada. O formato DPO inclui `rejected`. Todos os ficheiros são colocados em pasta excluída do GitHub (`data/`). Os rótulos de revisão e autorização têm de ser **verdadeiros**, não são confirmados automaticamente pelo software.
 
-**Experiência opcional de LoRA:** o script `scripts/train_local_lora.py` usa TRL/PEFT, exige checkpoint HF local, GPU CUDA e aprovação `--approve-training`. Não é lançado pela Expecto, não publica o adapter nem o ativa sozinho. O seu funcionamento real e a compatibilidade com versões futuras do TRL não foram validados neste ambiente. Consulta licenças e custos do modelo base antes de treinar.
+**Experiência opcional de LoRA:** instala primeiro as dependências experimentais com `pip install -r requirements-training.txt`, num ambiente virtual específico e com drivers CUDA compatíveis.  o script `scripts/train_local_lora.py` usa TRL/PEFT, exige checkpoint HF local, GPU CUDA e aprovação `--approve-training`. Não é lançado pela Expecto, não publica o adapter nem o ativa sozinho. O seu funcionamento real e a compatibilidade com versões futuras do TRL não foram validados neste ambiente. Consulta licenças e custos do modelo base antes de treinar.
 
 **Reforço/GRPO:** `aura.reward_lab.arithmetic_reward` é apenas um protótipo de função de recompensa para cálculos exatos. **Nenhum treino GRPO/PPO foi executado ou automatizado**. Para o futuro, Hugging Face TRL suporta GRPO, com experiências isoladas e recompensa verificável, sujeito a GPU, treino curado e avaliação independente. DPO é otimização por preferências, não uma demonstração de RL online.
 
