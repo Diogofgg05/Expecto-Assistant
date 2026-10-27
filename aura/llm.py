@@ -4,6 +4,7 @@ import httpx
 from .config import Settings
 from .database import Database
 from .memory import MemoryEngine
+from .identity import Identity, IdentitySettings
 
 SYSTEM = '''És a Expecto, um assistente pessoal em português europeu. Responde de forma
 natural, concisa e precisa. Nunca afirmes que executaste uma ação sem confirmação
@@ -71,7 +72,7 @@ class Ollama:
                    '\n\nFontes recolhidas (não verificadas independentemente):\n' +
                    '\n'.join(f"- {x['title']}: {x['content'][:350]} [URL: {x['url']}; {x['evidence_level']}]"
                              for x in knowledge))
-        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + context}]
+        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context}]
         for x in (history or [])[-6:]:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
                 messages.append({'role': x['role'], 'content': x['content'][:1500]})
