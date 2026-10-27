@@ -155,6 +155,32 @@ class AuraEngine:
             new_mode = IdentitySettings(self.settings.data_dir).set_mode(match_mode.group(1))
             return reply(f'Modo {new_mode} ativado e guardado. A minha identidade e as regras de segurança permanecem iguais.')
 
+        # 5.2: explicitly requested research/orchestration, never automatic web search.
+        deep_request = re.match(r'^(?:investiga profundamente|raciocina com fontes|pesquisa aprofundada)\s*[:,-]?\s+(.+)$',original,re.I)
+        if deep_request:
+            import os
+            from .reasoning_orchestrator import ReasoningOrchestrator,LocalSearxngSearch
+            from .multilayer_reasoning import OllamaMultiLayerAdapter
+            from .book_semantics import OllamaBookEncoder
+            question=deep_request.group(1).strip()
+            wants_web=bool(re.search(r'\b(?:na internet|na web|pesquisa externa)\b',normalized(question)))
+            if wants_web and not self.settings.searxng_url:
+                return reply('A pesquisa externa precisa de um SearXNG local configurado. '
+                             'Sem ele posso investigar apenas os livros importados.')
+            try:
+                adapter=OllamaMultiLayerAdapter(self.settings.ollama_url,
+                         os.getenv('AURA_REASONING_MODEL') or self.settings.ollama_model)
+                external=LocalSearxngSearch(self.settings.searxng_url) if wants_web else None
+                result=await ReasoningOrchestrator(self.db,adapter,external=external).run(question)
+                if result['status']=='supported_proposal':
+                    message=result['answer'] + '\n\n(Resposta fundamentada em excertos; fontes não são provas.)'
+                else:
+                    message='Não consegui verificar suficientemente a resposta. '
+                    message+=' '.join(result.get('limitations',[])[:2])
+                return reply(message, data=result)
+            except (ValueError,TypeError) as ex:
+                return reply('Não consegui completar a investigação: '+str(ex))
+
         # Book-grounded natural questions: only imported/authorized PDF passages.
         m=re.match(r'^(?:segundo os livros|pesquisa nos livros|consulta os livros)\s*[:,-]?\s+(.+)$',original,re.I)
         if m:
