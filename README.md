@@ -1,3 +1,7 @@
+## Expecto 4.5 — Benchmark independente de raciocínio
+
+O módulo `aura/reasoning_benchmark.py` compara respostas simples e raciocínio multicamada em conjuntos separados de validação e teste reservado, usando métricas lexicais, citações e abstenção. Não altera modelos nem aprova melhorias automaticamente. A avaliação não constitui prova de veracidade ou compreensão. Consulte `docs/REASONING_BENCHMARK_45.md`.
+
 ## Expecto 4.4 — Auditoria independente das hipóteses
 
 O módulo `aura/evidence_critic.py` sinaliza números sem referência, negações não apoiadas no texto e correspondência lexical fraca. Mantém explicitamente `semantic_entailment_verified=false`: estas verificações não comprovam verdade. Consulte [documentação](docs/EVIDENCE_CRITIC_44.md).
