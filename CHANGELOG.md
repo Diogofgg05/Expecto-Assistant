@@ -1,3 +1,10 @@
+## 4.6 — Verified Reasoning
+- Verificação independente de aritmética exata com AST restrita, limites de complexidade e sem execução de código.
+- Segundo passo de crítica de respostas; citações limitadas às passagens recuperadas.
+- Novo comando `reason-verify` com referências a livros e páginas.
+- Testes de segurança, refutação e integração.
+- Os resultados continuam a ser propostas; não é uma nova rede neuronal treinada.
+
 ## 4.5 — Independent Reasoning Benchmark
 - Separação dev/test, avaliação de citações, respostas e abstenção; retenção do método inicial em caso de regressão.
 - Avaliação independente das respostas esperadas; sem auto-treino de pesos.
