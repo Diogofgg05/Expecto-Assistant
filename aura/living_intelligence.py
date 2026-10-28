@@ -79,12 +79,31 @@ class ContinuityEngine:
                                 (status,datetime.now(timezone.utc).isoformat(),ident)).rowcount>0
 
     def suggestions(self, maximum:int=3) -> list[dict]:
-        """Local, explainable suggestions. Never performs the suggested action."""
-        goals=self.goals(active_only=True)
-        out=[]
-        for goal in goals[:max(1,min(maximum,5))]:
-            out.append({'goal_id':goal['id'],'suggestion':f'Queres rever o próximo passo do objetivo: {goal["title"]}?',
-                        'reason':'Objetivo ativo registado por ti', 'action_requires_permission':True})
+        """Rank goals by explicit feedback, without acting on the suggestion.
+
+        No implicit behavioural profiling; user feedback and explicit check-ins
+        determine the priority. Avoid exposing free-form check-in notes here.
+        """
+        from .reflection import ReflectionEngine
+        reflection = ReflectionEngine(self.db)
+        scores = reflection.suggestion_scores()
+        states = reflection.latest_goal_states()
+        goals = self.goals(active_only=True)
+        # Python's stable sort keeps the existing newest-first order on ties.
+        goals.sort(key=lambda goal: scores.get(goal['id'], 0), reverse=True)
+        out = []
+        for goal in goals[:max(1, min(maximum, 5))]:
+            blocked = states.get(goal['id']) == 'blocked'
+            suggestion = (f'Registaste um bloqueio no objetivo: {goal["title"]}. '
+                          'Queres rever uma solução ou o próximo passo?'
+                          if blocked else
+                          f'Queres rever o próximo passo do objetivo: {goal["title"]}?')
+            out.append({
+                'goal_id': goal['id'], 'suggestion': suggestion,
+                'reason': ('Bloqueio comunicado explicitamente por ti' if blocked
+                           else 'Objetivo ativo registado por ti'),
+                'action_requires_permission': True,
+            })
         return out
 
     def context(self) -> str:
