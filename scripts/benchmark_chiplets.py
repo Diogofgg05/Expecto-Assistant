@@ -16,6 +16,9 @@ import time
 import tracemalloc
 from pathlib import Path
 
+# Allow direct invocation from the repository root on all CI runners.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 
 def sample(mode: str) -> dict:
     tracemalloc.start()
