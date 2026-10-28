@@ -826,11 +826,18 @@ class AuraEngine:
         while not stop.is_set():
             if (self.db.capture_enabled(self.settings.episodic_capture) and
                 self.db.get_option('private_mode','false') != 'true'):
-                if self.settings.embedding_model:
+                # Skip service construction and network probes while idle.
+                # SQLite queue checks are cheaper than activating embedding/Ollama
+                # services when no work is pending.
+                if (self.settings.embedding_model and
+                    self.db.pending_episode_embeddings(
+                        self.settings.embedding_model,
+                        self.settings.episodic_lookback_months, 1)):
                     await self.memory.index_episode_pending(self.settings.episodic_lookback_months, 12)
                 enabled = self.db.get_option('auto_extract_memory',
                     'true' if self.settings.auto_extract_memory else 'false')=='true'
-                if enabled:
+                if (enabled and self.db.unprocessed_user_episodes(
+                        self.settings.episodic_lookback_months, 1)):
                     await self.extractor.extract_one()
                 auto = self.db.get_option('auto_consolidate_memory',
                     'true' if self.settings.auto_consolidate_memory else 'false')=='true'
