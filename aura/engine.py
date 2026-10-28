@@ -66,7 +66,11 @@ class AuraEngine:
 
     def __getattr__(self, name: str):
         if name in self._CHIPLET_CLASSES:
-            return self._chiplet_fabric.get(name)
+            # Materialise the hot path: later reads avoid __getattr__, registry
+            # lookups and locks. The fabric still guarantees a single instance.
+            instance = self._chiplet_fabric.get(name)
+            self.__dict__[name] = instance
+            return instance
         raise AttributeError(f'{type(self).__name__!s} has no attribute {name!r}')
 
     def chiplet_status(self) -> dict:
