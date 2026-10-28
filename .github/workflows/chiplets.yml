@@ -23,6 +23,6 @@ jobs:
       - name: Full offline regression suite
         run: python -m pytest -q tests
       - name: Hologram animation syntax and frame-budget tests
-        run: node --check web/orb.js && node --test tests/orb_frame_budget.test.cjs
+        run: node --check web/orb.js && node --check web/app.js && node --check web/math.js && node --test tests/orb_frame_budget.test.cjs tests/math_render.test.cjs
       - name: Isolated cold-start proxy (not prior-commit A/B)
         run: python scripts/benchmark_chiplets.py --runs 3
