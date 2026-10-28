@@ -39,6 +39,7 @@ class Settings:
     searxng_url: str = ''
     research_interval_hours: int = 24
     voice_output: bool = True
+    local_stt_model_dir: str = ''  # existing local model directory; never auto-download
     episodic_lookback_months: int = 6
     episodic_capture: bool = True
     memory_backup_days: int = 7
@@ -73,6 +74,7 @@ class Settings:
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
             voice_output=os.getenv('AURA_VOICE_OUTPUT', 'true').lower() not in ('false', '0', 'no'),
+            local_stt_model_dir=os.getenv('AURA_LOCAL_STT_MODEL_DIR', ''),
             episodic_lookback_months=max(1, min(60, int(os.getenv('AURA_MEMORY_MONTHS', '6')))),
             episodic_capture=os.getenv('AURA_EPISODIC_CAPTURE', 'true').lower() not in ('false','0','no'),
             memory_backup_days=max(1, min(90, int(os.getenv('AURA_MEMORY_BACKUP_DAYS', '7')))),
