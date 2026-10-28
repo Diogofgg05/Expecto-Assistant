@@ -14,7 +14,7 @@
                localRecording:null,voiceFailure:null,history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
   if(!state.sessionId){state.sessionId=(window.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));sessionStorage.setItem('aura_session_id',state.sessionId);}
   const LABELS={memory:'MEMÓRIA',research:'CONHECIMENTO',browser:'BROWSER · FONTES',
-                jobs:'INVESTIGAÇÕES AUTÓNOMAS',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
+                jobs:'INVESTIGAÇÕES AUTÓNOMAS',mathematics:'MATEMÁTICA · CÁLCULO EXATO',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
   const setMode=(m)=>{app.classList.remove('listening','thinking','speaking');if(m!=='idle')app.classList.add(m);presence.textContent=({idle:'SISTEMA DISPONÍVEL',listening:'A OUVIR',thinking:'A PROCESSAR',speaking:'A RESPONDER'})[m]||m.toUpperCase();window.AuraOrb?.setMode(m);};
   function sayText(text,error=false){
     transcript.textContent=text||'';transcript.classList.toggle('error',error);
@@ -39,7 +39,9 @@
   function loadPanel(name,data){
     const panel=state.panels.get(name);if(!panel)return;
     const body=panel.querySelector('.panel-body');body.replaceChildren();
-    if(name==='patronum'){
+    if(name==='mathematics'){
+      if(!window.ExpectoMath?.render(body,data))body.append(el('div','panel-empty','Formato matemático indisponível.'));
+    }else if(name==='patronum'){
       body.append(el('div','patronum-sigil','✦  EXPECTO PATRONUM  ✦'));
       stat(body,'MODO','ATIVO');stat(body,'OLLAMA',data?.ollama_available?'DISPONÍVEL':'NÃO DISPONÍVEL');
       stat(body,'MEMÓRIAS',String(data?.memories ?? 0));
@@ -172,6 +174,9 @@
   function closePanel(name){const p=state.panels.get(name);if(p){p.remove();state.panels.delete(name);}layout();}
   function closeAll(){for(const p of state.panels.values())p.remove();state.panels.clear();layout();}
   function respond(payload){
+    if(payload?.data?.reasoning?.status==='exact_algebra'){
+      openPanel('mathematics',payload.data.reasoning);
+    }
     if(payload.action?.type==='patronum'){
       app.classList.add('patronum');openPanel('patronum',payload.data);
     }else if(payload.action?.type==='patronum_off'){
