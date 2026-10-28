@@ -21,7 +21,10 @@
   };
   function circle(x,y,r,stroke,lineWidth=1,alpha=1){ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.strokeStyle=stroke;ctx.globalAlpha=alpha;ctx.lineWidth=lineWidth;ctx.stroke();ctx.globalAlpha=1;}
   function draw(timestamp){
-    if (!document.hidden && (timestamp-last>=(reduced?120:25))){
+    // Adaptive draw budget: keep voice interaction smooth, reduce idle CPU.
+    // The hologram remains present; we only reduce redraw frequency.
+    const frameDelay = reduced ? 500 : orb.mode === 'idle' ? 50 : orb.mode === 'thinking' ? 33 : 25;
+    if (!document.hidden && (timestamp-last>=frameDelay)){
       last=timestamp;frame++;ctx.clearRect(0,0,W,H);
       const t=reduced?0:timestamp/1000;const k=Math.min(W,H)/500;const cx=W/2,cy=H*.465,r=132*k;
       const energy=orb.mode==='listening'?1.5:orb.mode==='thinking'?1.15:1;
