@@ -1,5 +1,15 @@
 # Expecto Assistant 5.2 — Hybrid Research & Verified Reasoning
 
+## Novas previews reais do frontend — PNG e clips MP4
+
+A [galeria em docs/previews](docs/previews/README.md) inclui seis novas capturas PNG 1280 × 720 e dois clips MP4 silenciosos feitos com Chromium a executar a interface real. **Todos os dados de memória, pesquisa e diagnósticos são sintéticos; não representam consultas Ollama, microfone ou pesquisa online.** As capturas 21–28 documentam a versão visual da branch main, não funcionalidades ainda experimentais.
+
+[![Preview atualizada da interface](docs/previews/21-interface-inicial-2026.png)](docs/previews/21-interface-inicial-2026.png)
+
+[Ver animação do holograma (MP4)](docs/previews/27-holograma-em-movimento.mp4) · [Ver transições de painéis (MP4)](docs/previews/28-paineis-dinamicos.mp4)
+
+---
+
 ## Galeria de 20 previews
 
 > **Transparência:** as imagens 01–10 são capturas do frontend real da Expecto **com dados fictícios injetados para demonstração**. As imagens 11–20 são **mockups conceptuais**, não ecrãs implementados nem provas de execução real dos modelos. Todos os exemplos são ilustrativos.
