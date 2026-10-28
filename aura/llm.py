@@ -1,6 +1,7 @@
 """Ollama is optional; when offline we report the limitation instead of hallucinating."""
 from __future__ import annotations
 import httpx
+import json
 from .config import Settings
 from .database import Database
 from .memory import MemoryEngine
@@ -98,7 +99,7 @@ class Ollama:
 
         return await self.compute.limiter.run(invoke)
 
-    async def reply(self, question: str, history: list[dict] | None = None) -> str:
+    async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         notes = await self.memory.recall(question, 8)
         episodes = await self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5)
         # Never include unbounded external data in the prompt.
@@ -153,6 +154,35 @@ class Ollama:
                 }
                 if plan.keep_alive is not None:
                     payload['keep_alive'] = plan.keep_alive
+                if on_token is not None:
+                    payload['stream'] = True
+                    chunks = []
+                    length = 0
+                    async with httpx.AsyncClient(timeout=httpx.Timeout(65.0, connect=3.0)) as client:
+                        async with client.stream('POST', self.settings.ollama_url + '/api/chat',
+                                                 json=payload) as resp:
+                            if resp.status_code == 404:
+                                return (f'O modelo {plan.model} não está instalado. '
+                                        f'Executa: ollama pull {plan.model}.')
+                            resp.raise_for_status()
+                            async for line in resp.aiter_lines():
+                                if not line.strip():
+                                    continue
+                                frame = json.loads(line)
+                                if not isinstance(frame, dict):
+                                    raise ValueError('Invalid Ollama stream frame')
+                                delta = frame.get('message', {}).get('content', '')
+                                if not isinstance(delta, str):
+                                    raise ValueError('Invalid Ollama token')
+                                if delta:
+                                    length += len(delta)
+                                    if length > 10000:
+                                        raise ValueError('Ollama response too long')
+                                    chunks.append(delta)
+                                    await on_token(delta)
+                                if frame.get('done') is True:
+                                    break
+                    return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
                 async with httpx.AsyncClient(timeout=httpx.Timeout(65.0, connect=3.0)) as client:
                     resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
                     if resp.status_code == 404:
