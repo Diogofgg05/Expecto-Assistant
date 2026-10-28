@@ -99,9 +99,12 @@ def arithmetic_audit(answer: str) -> dict:
         for m in pairs
     ])
     invalid = [x for x in checks["checks"] if x["status"] == "refuted_arithmetic"]
+    unverifiable = [x for x in checks["checks"] if x["status"] == "not_verifiable"]
     return {"status": "incorrect_arithmetic" if invalid else
+            "unverifiable_arithmetic" if unverifiable else
             "arithmetic_checked" if pairs else "no_explicit_arithmetic",
-            "checks": checks["checks"], "invalid_count": len(invalid)}
+            "checks": checks["checks"], "invalid_count": len(invalid),
+            "unverifiable_count": len(unverifiable)}
 
 
 @dataclass(frozen=True)
@@ -178,12 +181,26 @@ class ReasoningRuntime:
         if self.review_mode == "off":
             return ReviewOutcome(answer=answer, status="review_disabled")
         tier = classify_task(question, history_len=history_len)
-        if self.review_mode != "deep" and tier != "complex":
-            return ReviewOutcome(answer=answer, status="single_pass")
+        # Mechanical arithmetic checks are cheap enough for *every* model answer,
+        # including short questions. A casual prompt must not bypass validation.
+        before = arithmetic_audit(answer)
+        unsafe_math = before["status"] in {
+            "incorrect_arithmetic", "unverifiable_arithmetic", "not_checked"
+        }
+        if self.review_mode != "deep" and tier != "complex" and not unsafe_math:
+            return ReviewOutcome(answer=answer, status="single_pass",
+                                 arithmetic_checks=len(before["checks"]))
+
+        if before["status"] == "not_checked":
+            self._arithmetic_rejections += 1
+            return ReviewOutcome(
+                answer="A resposta contém demasiadas contas para verificação automática. "
+                       "Divide o problema em etapas mais pequenas.",
+                status="abstained_unchecked_arithmetic",
+                limitations=("Limite de contas excedido.",))
 
         self._reviewed += 1
-        before = arithmetic_audit(answer)
-        incorrect = before["status"] == "incorrect_arithmetic"
+        incorrect = unsafe_math
         limitations = ["A crítica do próprio modelo não comprova verdade factual."]
         issues: list[str] = []
         calls = 0
@@ -227,14 +244,34 @@ class ReasoningRuntime:
                 raise ValueError("empty revision")
             revised = revision.strip()[:MAX_ANSWER]
             after = arithmetic_audit(revised)
-            if after["status"] in {"incorrect_arithmetic", "not_checked"}:
+            if after["status"] in {
+                "incorrect_arithmetic", "unverifiable_arithmetic", "not_checked"
+            }:
                 raise ValueError("revised arithmetic still invalid")
+            if incorrect:
+                # A model must not evade a failed calculation by silently
+                # deleting the equation. All refuted identities must reappear
+                # with their independently computed exact result.
+                for failed in before["checks"]:
+                    if failed["status"] == "not_verifiable":
+                        raise ValueError("unsafe expression cannot be repaired mechanically")
+                    if failed["status"] != "refuted_arithmetic":
+                        continue
+                    normalized = re.sub(r"\s+", "", failed["expression"])
+                    if not any(
+                        re.sub(r"\s+", "", item["expression"]) == normalized and
+                        item["status"] == "confirmed_arithmetic" and
+                        item["computed_result"] == failed["computed_result"]
+                        for item in after["checks"]
+                    ):
+                        raise ValueError("revision omitted required arithmetic correction")
             self._revisions += 1
             return ReviewOutcome(answer=revised, status="revised_model_only",
                                  model_calls=calls,
                                  arithmetic_checks=len(after["checks"]),
                                  limitations=tuple(limitations))
-        except (ValueError, TypeError, OSError, asyncio.TimeoutError):
+        except (ValueError, TypeError, OSError, asyncio.TimeoutError,
+                httpx.HTTPError, ComputeBusyError):
             if incorrect:
                 return ReviewOutcome(
                     answer="Não consegui validar os cálculos desta resposta. "
