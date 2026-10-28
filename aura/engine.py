@@ -79,7 +79,7 @@ class AuraEngine:
         """Report utilisation without activating standby services."""
         return self._chiplet_fabric.snapshot()
 
-    async def command(self, original: str, history: list[dict] | None = None) -> dict:
+    async def command(self, original: str, history: list[dict] | None = None, *, on_token=None) -> dict:
         original = original.strip()
         original = re.sub(r'^(?:aura|expecto)[,\s:]+', '', original, flags=re.I).strip()
         key = normalized(original).rstrip('.!?')
@@ -777,7 +777,12 @@ class AuraEngine:
             result['capture'] = True
             return result
 
-        text = await self.llm.reply(original, history)
+        # Stream only the draft; the validated final response may correct it.
+        # Legacy callers keep the original nonstreaming Ollama contract.
+        if on_token is None:
+            text = await self.llm.reply(original, history)
+        else:
+            text = await self.llm.reply(original, history, on_token=on_token)
         # Do not turn transport failures into fictitious successful reviews.
         if text.startswith(('Não consigo contactar o Ollama.',
                             'Ollama excedeu o tempo de resposta.',
