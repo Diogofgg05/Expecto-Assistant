@@ -24,7 +24,7 @@ jobs:
           python-version: '3.12'
       - name: Install browser renderer
         run: |
-          python -m pip install 'playwright>=1.55,<2'
+          python -m pip install 'playwright>=1.55,<2' 'Pillow>=10,<13'
           python -m playwright install --with-deps chromium
           ffmpeg -version | head -1
       - name: Render PNG screenshots and MP4 previews
