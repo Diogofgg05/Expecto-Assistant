@@ -2,10 +2,11 @@
 from __future__ import annotations
 import asyncio
 import logging
+import json
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 from ipaddress import ip_address
@@ -227,13 +228,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Read-only service-status snapshot; never activates standby modules."""
         return engine.chiplet_status()
 
-    @app.post('/api/command')
-    async def command(payload: Message):
-        result = await engine.command(payload.message, payload.history)
+    def persist_command(payload: Message, result: dict) -> None:
+        # Preserve the existing privacy and retention rules for both transports.
         if (result.get('capture') and db.capture_enabled(settings.episodic_capture) and
             db.get_option('private_mode','false') != 'true'):
-            # Sensitive-looking inputs are not captured automatically; do not retain
-            # passwords, API keys or payment-card numbers by accident.
             from .privacy import safe_to_capture
             if safe_to_capture(payload.message):
                 episodes = db.record_exchange(payload.session_id, payload.message, result.get('text',''))
@@ -242,8 +240,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     db.observe_temporal_episode(episodes[0]['id'])
                     if db.get_option('auto_link_memory','true' if settings.auto_link_memory else 'false')=='true':
                         engine.relations.observe_episode(episodes[0]['id'])
+
+    @app.post('/api/command')
+    async def command(payload: Message):
+        result = await engine.command(payload.message, payload.history)
+        persist_command(payload, result)
         result.pop('capture', None)
         return result
+
+    @app.post('/api/command/stream')
+    async def command_stream(payload: Message):
+        """Same trusted command router as /api/command; provisional LLM tokens
+        are followed by one final verified response. No token is a tool command.
+        """
+        async def iterator():
+            queue = asyncio.Queue(maxsize=32)
+
+            async def token_sink(token: str):
+                await queue.put({'type':'token', 'text':token})
+
+            async def producer():
+                try:
+                    result = await engine.command(payload.message, payload.history,
+                                                  on_token=token_sink)
+                    persist_command(payload, result)
+                    result.pop('capture', None)
+                    await queue.put({'type':'final','payload':result})
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logging.getLogger('aura').exception('Streaming command failed')
+                    await queue.put({'type':'error', 'message':
+                                     'O processamento falhou. Tenta novamente.'})
+                finally:
+                    await queue.put({'type':'end'})
+
+            task = asyncio.create_task(producer())
+            try:
+                while True:
+                    item = await queue.get()
+                    if item['type']=='end':
+                        break
+                    yield 'data: ' + json.dumps(item,ensure_ascii=False) + '\\n\\n'
+            finally:
+                if not task.done():
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
+
+        return StreamingResponse(iterator(), media_type='text/event-stream',
+                                 headers={'Cache-Control':'no-store', 'X-Accel-Buffering':'no'})
 
     @app.get('/api/panel/{name}')
     async def panel(name: str):
