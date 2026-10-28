@@ -1,4 +1,4 @@
-# Expecto Assistant — galeria de 20 previews
+# Expecto Assistant — galeria de previews PNG e clips MP4
 
 Imagens criadas para documentação visual do projeto, versão de referência **5.2**. Todas em formato **PNG 1280 × 720**.
 
@@ -125,3 +125,37 @@ Imagens criadas para documentação visual do projeto, versão de referência **
 **Tipo:** Mockup ilustrativo / conceito.
 
 ![Grafo 3D — conceito](./20-20-grafo-de-conhecimento-3d.png)
+
+
+---
+
+## Atualização de 2026 — interface real demonstrativa (21–28)
+
+As imagens 21–26 e os clips 27–28 são gerados com **Chromium a executar os ficheiros HTML/CSS/JS da branch main**. Os exemplos de memória, fontes e diagnósticos são **dados inventados especificamente para demonstração**; os clips são gravados do frontend em funcionamento, **sem áudio, reconhecimento vocal, Ollama, acesso real à Internet ou memória privada**.
+
+| Preview | Tipo | Descrição |
+| --- | --- | --- |
+| [21 · Início](21-interface-inicial-2026.png) | PNG real do frontend | Holograma em repouso |
+| [22 · Memória](22-memoria-demonstracao-2026.png) | PNG real do frontend + demo | Painel de memória ativado por comando simulado |
+| [23 · Patronum](23-patronum-demonstracao-2026.png) | PNG real do frontend + demo | Estado visual especial |
+| [24 · Diagnósticos](24-diagnosticos-demonstracao-2026.png) | PNG real do frontend + demo | Diagnósticos ilustrativos |
+| [25 · Pesquisa](25-pesquisa-demonstracao-2026.png) | PNG real do frontend + demo | Resultados fictícios, sem pesquisa online |
+| [26 · Voz](26-voz-estado-demonstracao-2026.png) | PNG real do frontend + demo | Estado a ouvir simulado, sem gravação |
+| [27 · Holograma](27-holograma-em-movimento.mp4) | MP4 do frontend | Animação real do canvas |
+| [28 · Painéis](28-paineis-dinamicos.mp4) | MP4 do frontend | Transições visuais entre componentes com dados fictícios |
+
+![Novo ecrã inicial](./21-interface-inicial-2026.png)
+
+![Nova memória demonstrativa](./22-memoria-demonstracao-2026.png)
+
+[▶ Clip: holograma em movimento](./27-holograma-em-movimento.mp4) · [▶ Clip: painéis dinâmicos](./28-paineis-dinamicos.mp4)
+
+### Reprodução
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+python scripts/render_app_previews.py
+```
+
+Para vídeos MP4 é necessário `ffmpeg` disponível no PATH. O script só acede ao servidor local temporário e à interface estática existente; não inicia o backend privado nem cria mensagens de utilizador. O workflow de previews publica automaticamente os ficheiros gerados na branch documental, antes de serem revistos para integração.
