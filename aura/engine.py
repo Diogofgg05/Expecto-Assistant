@@ -10,6 +10,7 @@ from .identity import Identity, IdentitySettings
 from .config import Settings
 from .relations import DISPLAY as RELATION_DISPLAY
 from .security import VaultError
+from .reasoning_runtime import ReasoningRuntime, exact_math_reply
 
 
 def normalized(s: str) -> str:
@@ -45,6 +46,7 @@ class AuraEngine:
 
     def __init__(self, settings: Settings, db: Database):
         self.settings, self.db = settings, db
+        self.reasoning_runtime = ReasoningRuntime(review_mode=settings.reasoning_review_mode)
         self._chiplet_fabric = ChipletFabric({
             name: (lambda chiplet=name: self._build_chiplet(chiplet))
             for name in self._CHIPLET_CLASSES
@@ -767,8 +769,29 @@ class AuraEngine:
             result['capture'] = True
             return result
 
+        exact = exact_math_reply(original)
+        if exact is not None:
+            result = reply(exact.text, data={'reasoning': {
+                'status': 'exact_algebra', 'verification': 'rational_arithmetic',
+                'calculation': exact.calculation}})
+            result['capture'] = True
+            return result
+
         text = await self.llm.reply(original, history)
-        result = reply(text, speak=len(text) < 500)
+        # Do not turn transport failures into fictitious successful reviews.
+        if text.startswith(('Não consigo contactar o Ollama.',
+                            'Ollama excedeu o tempo de resposta.',
+                            'O motor de inferência está ocupado.',
+                            'Ocorreu um erro na comunicação com o modelo local.',
+                            'O modelo respondeu sem texto.',
+                            'O modelo ')):
+            result = reply(text, speak=len(text) < 500)
+            result['capture'] = True
+            return result
+
+        reviewed = await self.reasoning_runtime.refine(
+            original, text, self.llm.review_text, history_len=len(history or []))
+        result = reply(reviewed.answer, speak=len(reviewed.answer) < 500)
         result['capture'] = True  # Save only actual conversations, never CRUD/control commands.
         return result
 
