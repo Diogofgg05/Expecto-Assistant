@@ -101,7 +101,7 @@ def show_listening(page):
         window.AuraOrb.setMode('listening');
         document.getElementById('aura-presence').textContent = 'A OUVIR · PRÉ-VISUALIZAÇÃO';
         const transcript = document.getElementById('live-transcript');
-        transcript.textContent = 'EXEMPLO VISUAL · ESTADO DO MICROFONE\nNenhum áudio foi capturado nesta demonstração.';
+        transcript.textContent = 'EXEMPLO VISUAL · ESTADO DO MICROFONE\\nNenhum áudio foi capturado nesta demonstração.';
         transcript.classList.add('visible');
     }""")
     page.wait_for_timeout(450)
