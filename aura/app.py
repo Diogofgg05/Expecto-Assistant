@@ -172,6 +172,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except KeyError:
             raise HTTPException(404, 'Voice session not found')
 
+    @app.get('/api/compute/status')
+    async def compute_status():
+        # Constructing the LLM chiplet is local-only and does not load Ollama weights.
+        return engine.llm.compute_status()
+
     @app.get('/api/chiplets')
     async def chiplet_metrics():
         """Read-only service-status snapshot; never activates standby modules."""
