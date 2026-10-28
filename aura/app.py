@@ -172,6 +172,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except KeyError:
             raise HTTPException(404, 'Voice session not found')
 
+    @app.get('/api/reasoning/status')
+    async def reasoning_status():
+        # Read-only. Never loads a model, reads a conversation or starts research.
+        return {"version": "6.5", **engine.reasoning_runtime.status(),
+                "exact_algebra": "bounded rational solver, no LLM",
+                "quality_goal": "16/20 is not certified without held-out real-model evaluations"}
+
     @app.get('/api/compute/status')
     async def compute_status():
         # Constructing the LLM chiplet is local-only and does not load Ollama weights.
