@@ -65,6 +65,9 @@ class BookLearningEngine:
                 INSERT INTO book_passages_fts(rowid,text) VALUES(new.rowid,new.text); END;
               CREATE TRIGGER IF NOT EXISTS bp_ad AFTER DELETE ON book_passages BEGIN
                 INSERT INTO book_passages_fts(book_passages_fts,rowid,text) VALUES('delete',old.rowid,old.text); END;
+              CREATE TRIGGER IF NOT EXISTS bp_au AFTER UPDATE OF text ON book_passages BEGIN
+                INSERT INTO book_passages_fts(book_passages_fts,rowid,text) VALUES('delete',old.rowid,old.text);
+                INSERT INTO book_passages_fts(rowid,text) VALUES(new.rowid,new.text); END;
             """)
             count = db.execute('SELECT count(*) FROM book_passages').fetchone()[0]
             indexed = db.execute('SELECT count(*) FROM book_passages_fts').fetchone()[0]
