@@ -36,3 +36,14 @@
 .patronum-sigil{letter-spacing:.19em;text-align:center;font-weight:650;color:#9defff;padding:24px 8px;text-shadow:0 0 22px #56c6ff}
 @keyframes patronum-pulse{0%,100%{opacity:.44;transform:scale(.94)}50%{opacity:1;transform:scale(1.09)}}
 @media(prefers-reduced-motion:reduce){.app.patronum .halo{animation:none}}
+
+/* Native vector MathML: crisp at every zoom, no raw TeX or remote fonts. */
+.math-heading{font-size:.78rem;letter-spacing:.15em;color:#78eaff;margin:1.3rem 0 .55rem}
+.panel-body math{display:block;max-width:100%;overflow-x:auto;overflow-y:hidden;
+  font-size:clamp(1.12rem,1.7vw,1.65rem);color:#e7fbff;padding:.55rem .4rem;
+  font-family:"Cambria Math","STIX Two Math",serif}
+.panel-body math mtable{columnspacing:.8em;rowspacing:.45em}
+.math-note{font-size:.97rem;line-height:1.65;color:#d2effa}
+.math-steps{padding-left:1.5rem;color:#d6f0fb;line-height:1.8;overflow-wrap:anywhere}
+.math-steps li{margin:.55rem 0}
+@media(max-width:760px){.panel-body math{font-size:1.14rem;overflow-x:auto}}
