@@ -281,7 +281,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     item = await queue.get()
                     if item['type']=='end':
                         break
-                    yield 'data: ' + json.dumps(item,ensure_ascii=False) + '\\n\\n'
+                    yield 'data: ' + json.dumps(item,ensure_ascii=False) + '\n\n'
             finally:
                 if not task.done():
                     task.cancel()
