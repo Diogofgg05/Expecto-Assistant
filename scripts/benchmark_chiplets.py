@@ -20,6 +20,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+def _peak_rss_kib() -> float | None:
+    """OS peak RSS (KiB) where available; unlike tracemalloc includes native heap."""
+    try:
+        import resource
+    except ImportError:  # Windows: resource is not part of the standard library.
+        return None
+    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return round(raw / 1024 if sys.platform == 'darwin' else float(raw), 1)
+
+
 def sample(mode: str) -> dict:
     tracemalloc.start()
     start = time.perf_counter_ns()
@@ -34,9 +44,11 @@ def sample(mode: str) -> dict:
             for name in engine._CHIPLET_CLASSES:
                 getattr(engine, name)
         elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
-        _, peak_bytes = tracemalloc.get_traced_memory()
+        current_bytes, peak_bytes = tracemalloc.get_traced_memory()
         result = {'mode': mode, 'elapsed_ms': round(elapsed_ms, 3),
+                  'python_alloc_current_kib': round(current_bytes / 1024, 1),
                   'python_alloc_peak_kib': round(peak_bytes / 1024, 1),
+                  'process_rss_peak_kib': _peak_rss_kib(),
                   'active': engine.chiplet_status()['active_count']}
     tracemalloc.stop()
     return result
@@ -67,10 +79,15 @@ def main() -> None:
                 statistics.median(item['elapsed_ms'] for item in rows), 3),
             'median_python_allocation_peak_kib': round(
                 statistics.median(item['python_alloc_peak_kib'] for item in rows), 1),
+            'median_python_allocation_current_kib': round(
+                statistics.median(item['python_alloc_current_kib'] for item in rows), 1),
+            'median_process_rss_peak_kib': (
+                round(statistics.median(item['process_rss_peak_kib'] for item in rows), 1)
+                if all(item['process_rss_peak_kib'] is not None for item in rows) else None),
             'active_last_run': rows[-1]['active'],
         }
     print(json.dumps({
-        'caveat': 'Proxy only: lazy/eager of same code; Python allocations, not RSS/VRAM or energy',
+        'caveat': 'Proxy only: lazy/eager of same code; Same-version proxy; RSS is peak process memory, not VRAM or energy',
         'results': output
     }, indent=2, ensure_ascii=False))
 
