@@ -41,7 +41,12 @@ class VoiceTurns:
         self.generation += 1
         return VoiceEvent("cancel_previous", self._move(Phase.LISTENING))
 
-    def transcript(self, text: str) -> VoiceEvent:
+    def transcript(self, text: str, *, generation: int | None = None) -> VoiceEvent:
+        # STT adapters MUST supply the listen() generation. A late transcription
+        # from a cancelled microphone stream must never be accepted as a new turn.
+        # The optional token keeps existing synchronous callers compatible.
+        if generation is not None and generation != self.generation:
+            return VoiceEvent("stale", self.generation)
         if self.phase != Phase.LISTENING:
             return VoiceEvent("ignored", self.generation)
         text = text.strip()[:self.max_text]
