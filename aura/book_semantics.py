@@ -98,7 +98,15 @@ class BookSemanticIndex:
                 raise ValueError('Embeddings com dimensões incompatíveis')
             with self.db.connect() as conn:
                 for r,vector in zip(batch,normalized):
-                    # An indexed passage must still have the source hash we read.
+                    # Embedding calls happen outside the transaction. A passage
+                    # may change or be deleted during inference: never insert a
+                    # vector derived from old text into a new passage revision.
+                    current=conn.execute(
+                        'SELECT text_hash,text FROM book_passages WHERE id=?',
+                        (r['id'],)).fetchone()
+                    if (current is None or current['text_hash'] != r['text_hash']
+                            or current['text'] != r['text']):
+                        continue
                     conn.execute('''INSERT INTO book_embeddings VALUES(?,?,?,?,?,?)
                        ON CONFLICT(passage_id,model) DO UPDATE SET
                        text_hash=excluded.text_hash,dimensions=excluded.dimensions,
@@ -128,6 +136,14 @@ class BookSemanticIndex:
         words=_words(question)
         scores=defaultdict(float)
         passages={}
+        # Never keep a live SQLite/SQLCipher connection open while Ollama
+        # performs an embedding request (which may take many seconds).
+        query_vector = None
+        if encoder is not None:
+            vectors = await encoder.embed([question])
+            if not isinstance(vectors, list) or len(vectors) != 1:
+                raise ValueError('Embedding da pergunta incompleto')
+            query_vector = _unit(vectors[0])
         with self.db.connect() as conn:
             if words:
                 try:
@@ -151,9 +167,8 @@ class BookSemanticIndex:
                     passages[p['id']]=p
                     # Reciprocal rank fusion: lexical evidence is independent of vector similarity.
                     scores[p['id']]+=1/(60+rank+1)
-            if encoder is not None:
-                # Validate a query embedding once, then search stored, matching source hashes.
-                query_vector=_unit((await encoder.embed([question]))[0])
+            if query_vector is not None:
+                # Only query embeddings still matching the original source hash.
                 embeddings=conn.execute('''SELECT e.passage_id,e.vector_json,e.dimensions,p.book_id,p.page,
                     p.ordinal,p.text,p.text_hash,b.title FROM book_embeddings e
                     JOIN book_passages p ON p.id=e.passage_id AND p.text_hash=e.text_hash
@@ -162,7 +177,10 @@ class BookSemanticIndex:
                     [encoder.model,len(query_vector),*params,candidate_limit*30]).fetchall()
                 ranked=[]
                 for item in embeddings:
-                    v=json.loads(item['vector_json'])
+                    try:
+                        v=_unit(json.loads(item['vector_json']))
+                    except (ValueError, TypeError, OverflowError):
+                        continue
                     if len(v)!=len(query_vector):continue
                     score=sum(x*y for x,y in zip(query_vector,v))
                     if math.isfinite(score) and score>=0.37:
