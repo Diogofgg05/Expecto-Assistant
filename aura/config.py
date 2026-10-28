@@ -35,6 +35,7 @@ class Settings:
     compute_gpu_mode: str = 'auto'
     compute_max_active: int = 2
     compute_max_waiting: int = 4
+    reasoning_review_mode: str = 'balanced'  # off | balanced | deep
     searxng_url: str = ''
     research_interval_hours: int = 24
     voice_output: bool = True
@@ -68,6 +69,7 @@ class Settings:
             compute_gpu_mode=os.getenv('AURA_COMPUTE_GPU_MODE', 'auto'),
             compute_max_active=int(os.getenv('AURA_COMPUTE_MAX_ACTIVE', '2')),
             compute_max_waiting=int(os.getenv('AURA_COMPUTE_MAX_WAITING', '4')),
+            reasoning_review_mode=os.getenv('AURA_REASONING_REVIEW_MODE', 'balanced'),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
             voice_output=os.getenv('AURA_VOICE_OUTPUT', 'true').lower() not in ('false', '0', 'no'),
