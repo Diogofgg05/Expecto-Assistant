@@ -104,6 +104,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {'status': 'ok', 'version': '3.3.0-fact-verification',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
+    @app.get('/api/chiplets')
+    async def chiplet_metrics():
+        """Read-only service-status snapshot; never activates standby modules."""
+        return engine.chiplet_status()
+
     @app.post('/api/command')
     async def command(payload: Message):
         result = await engine.command(payload.message, payload.history)
