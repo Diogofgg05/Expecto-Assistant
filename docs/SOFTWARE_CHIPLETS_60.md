@@ -60,3 +60,18 @@ within this version as a proxy, **not** a true comparison to previous commits.
 - No automatic model fine-tuning or unrequested Internet use.
 - Explicit user-authorised background research retains its existing behaviour.
 - The class remains addressable through `engine.memory`, `engine.llm`, etc.
+
+## Additional idle optimisations
+
+- Memory daemon checks SQLite queues first and does not construct the
+  embedding/extraction services until work exists. Disabled private capture
+  still blocks all automatic processing as before.
+- Hologram canvas redraw throttling is adaptive: roughly 15 fps in idle,
+  20 fps while thinking, 30 fps while listening at a 60 Hz screen; reduced
+  motion redraws at most 2 times per second. Real frame rates depend on
+  browser scheduling and display refresh rate.
+- Node VM tests simulate frames and validate idle/active/hidden budgets;
+  they do not establish physical energy or GPU savings.
+- The full Python suite also verifies pre-existing behaviour. Fixed the
+  continuity suggestion ranking to respect **explicit user feedback** and
+  explicitly recorded blockers, without executing suggested actions.
