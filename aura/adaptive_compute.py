@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, TypeVar
 
@@ -24,7 +23,7 @@ _HEAVY = re.compile(
     r"\b(?:demonstra|prova|resolve|calcula|equac(?:ao|oes)|integral|derivada|"
     r"algoritmo|programa|debug|codigo|código|python|javascript|seguranca|segurança|"
     r"contradicao|contradição|analisa profundamente|investiga|arquitetura|"
-    r"matriz|matrizes|refatora|refactor|reasoning|raciocina|planeia)\b",
+    r"matriz|matrizes|álgebra|algebra|refatora|refactor|reasoning|raciocina|planeia)\b",
     re.I,
 )
 _FAST = re.compile(
@@ -189,11 +188,15 @@ class InferenceLimiter:
                 await asyncio.wait_for(self._semaphore.acquire(),
                                        timeout=self.queue_timeout_s)
                 acquired = True
-            finally:
+                # Transfer queue->active atomically for accurate capacity checks.
                 async with self._lock:
                     self._waiting -= 1
-            async with self._lock:
-                self._active += 1
+                    self._active += 1
+            except BaseException:
+                if not acquired:
+                    async with self._lock:
+                        self._waiting -= 1
+                raise
             try:
                 result = await action()
             except BaseException:
