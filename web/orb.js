@@ -23,7 +23,7 @@
   function draw(timestamp){
     // Adaptive draw budget: keep voice interaction smooth, reduce idle CPU.
     // The hologram remains present; we only reduce redraw frequency.
-    const frameDelay = reduced ? 500 : orb.mode === 'idle' ? 50 : orb.mode === 'thinking' ? 33 : 25;
+    const frameDelay = reduced ? 500 : orb.mode === 'idle' ? 66 : orb.mode === 'thinking' ? 40 : 25;
     if (!document.hidden && (timestamp-last>=frameDelay)){
       last=timestamp;frame++;ctx.clearRect(0,0,W,H);
       const t=reduced?0:timestamp/1000;const k=Math.min(W,H)/500;const cx=W/2,cy=H*.465,r=132*k;
