@@ -7,6 +7,7 @@ from .database import Database
 from .memory import MemoryEngine
 from .identity import Identity, IdentitySettings
 from .adaptive_compute import AdaptiveCompute, ComputePolicy, ComputeBusyError
+from .ollama_resilience import OllamaCircuitBreaker
 
 SYSTEM = '''És a Expecto, um assistente pessoal em português europeu. Responde de forma
 natural, concisa e precisa. Nunca afirmes que executaste uma ação sem confirmação
@@ -25,6 +26,7 @@ class Ollama:
     def __init__(self, settings: Settings, db: Database, memory: MemoryEngine | None = None):
         self.settings, self.db = settings, db
         self.memory = memory or MemoryEngine(settings, db)
+        self._circuit = OllamaCircuitBreaker()
         self.compute = AdaptiveCompute(ComputePolicy(
             primary_model=settings.ollama_model,
             fast_model=settings.compute_fast_model,
@@ -36,7 +38,7 @@ class Ollama:
         ))
 
     def compute_status(self) -> dict:
-        return self.compute.status()
+        return {**self.compute.status(), 'ollama_resilience': vars(self._circuit.status())}
 
     async def _installed_models(self) -> dict[str, int | None]:
         """Only inspect Ollama when a distinct fast model was explicitly configured."""
@@ -68,6 +70,7 @@ class Ollama:
                         'selected': self.settings.ollama_model,
                         'selected_installed': any(x.split(':')[0] == self.settings.ollama_model.split(':')[0] for x in models)}
         except (httpx.HTTPError, ValueError):
+            self._circuit.failure()
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
 
@@ -143,6 +146,8 @@ class Ollama:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
                 messages.append({'role': x['role'], 'content': x['content'][:1500]})
         messages.append({'role': 'user', 'content': question[:2000]})
+        if not self._circuit.allow():
+            return ('O Ollama está temporariamente indisponível. Os comandos locais continuam disponíveis; tenta novamente dentro de alguns segundos.')
         try:
             installed = await self._installed_models()
             plan = self.compute.plan(question, history_len=len(history or []), installed=installed)
@@ -191,15 +196,20 @@ class Ollama:
                     resp.raise_for_status()
                     answer = resp.json().get('message', {}).get('content', '').strip()
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
-            return await self.compute.limiter.run(invoke)
+            result = await self.compute.limiter.run(invoke)
+            self._circuit.success()
+            return result
         except ComputeBusyError:
+            self._circuit.release_probe()
             return ('O motor de inferência está ocupado. Aguarda o fim dos pedidos '
                     'anteriores e volta a tentar.')
         except httpx.ConnectError:
+            self._circuit.failure()
             return ('Não consigo contactar o Ollama. Abre o Ollama, confirma que '
                     'está a executar e tenta novamente. Os comandos da interface '
                     'e a memória local continuam disponíveis.')
         except httpx.TimeoutException:
+            self._circuit.failure()
             return ('Ollama excedeu o tempo de resposta. Experimenta um modelo '
                     'mais pequeno ou verifica a memória RAM e a utilização da CPU.')
         except (httpx.HTTPError, ValueError):
