@@ -3,23 +3,13 @@ from __future__ import annotations
 import asyncio
 import re
 import unicodedata
+from importlib import import_module
+from .chiplets import ChipletFabric
 from .database import Database
-from .research import Researcher
-from .llm import Ollama
-from .identity import Identity, IdentitySettings, MODES
-from .living_intelligence import ContinuityEngine
-from .reflection import ReflectionEngine
-from .memory import MemoryEngine
-from .cognition import KnowledgeExtractor
+from .identity import Identity, IdentitySettings
 from .config import Settings
-from .relations import RelationMemory, DISPLAY as RELATION_DISPLAY
-from .consolidation import ConsolidationEngine
-from .learning import LearningEngine
-from .optimizer import OptimizationLab
-from .epistemics import EpistemicEngine
-from .quality import KnowledgeQuality
-from .factcheck import FactChecker
-from .security import SecureBackupManager, VaultError
+from .relations import DISPLAY as RELATION_DISPLAY
+from .security import VaultError
 
 
 def normalized(s: str) -> str:
@@ -33,22 +23,55 @@ def reply(text: str, *, action: dict | None = None, data=None, speak: bool = Tru
 
 
 class AuraEngine:
+    """Trusted intent router with demand-activated, in-process service chiplets."""
+
+    # Fixed trusted manifest. LLM output cannot select classes or imports.
+    _CHIPLET_CLASSES = {
+        'research': ('research', 'Researcher'),
+        'memory': ('memory', 'MemoryEngine'),
+        'extractor': ('cognition', 'KnowledgeExtractor'),
+        'relations': ('relations', 'RelationMemory'),
+        'consolidation': ('consolidation', 'ConsolidationEngine'),
+        'learning': ('learning', 'LearningEngine'),
+        'optimizer': ('optimizer', 'OptimizationLab'),
+        'epistemics': ('epistemics', 'EpistemicEngine'),
+        'quality': ('quality', 'KnowledgeQuality'),
+        'factcheck': ('factcheck', 'FactChecker'),
+        'secure_backups': ('security', 'SecureBackupManager'),
+        'continuity': ('living_intelligence', 'ContinuityEngine'),
+        'reflection': ('reflection', 'ReflectionEngine'),
+        'llm': ('llm', 'Ollama'),
+    }
+
     def __init__(self, settings: Settings, db: Database):
         self.settings, self.db = settings, db
-        self.research = Researcher(db, settings.searxng_url)
-        self.memory = MemoryEngine(settings, db)
-        self.extractor = KnowledgeExtractor(settings, db)
-        self.relations = RelationMemory(db)
-        self.consolidation = ConsolidationEngine(db)
-        self.learning = LearningEngine(settings, db)
-        self.optimizer = OptimizationLab(settings, db)
-        self.epistemics = EpistemicEngine(db)
-        self.quality = KnowledgeQuality(db)
-        self.factcheck = FactChecker(db)
-        self.secure_backups = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
-        self.continuity = ContinuityEngine(db)
-        self.reflection = ReflectionEngine(db)
-        self.llm = Ollama(settings, db, self.memory)
+        self._chiplet_fabric = ChipletFabric({
+            name: (lambda chiplet=name: self._build_chiplet(chiplet))
+            for name in self._CHIPLET_CLASSES
+        })
+
+    def _build_chiplet(self, name: str):
+        module_name, class_name = self._CHIPLET_CLASSES[name]
+        cls = getattr(import_module('.' + module_name, __package__), class_name)
+        if name == 'research':
+            return cls(self.db, self.settings.searxng_url)
+        if name == 'secure_backups':
+            return cls(self.db, self.settings.data_dir / 'secure_backups',
+                       self.settings.backup_passphrase)
+        if name == 'llm':
+            return cls(self.settings, self.db, self.memory)
+        if name in {'memory', 'extractor', 'learning', 'optimizer'}:
+            return cls(self.settings, self.db)
+        return cls(self.db)
+
+    def __getattr__(self, name: str):
+        if name in self._CHIPLET_CLASSES:
+            return self._chiplet_fabric.get(name)
+        raise AttributeError(f'{type(self).__name__!s} has no attribute {name!r}')
+
+    def chiplet_status(self) -> dict:
+        """Report utilisation without activating standby services."""
+        return self._chiplet_fabric.snapshot()
 
     async def command(self, original: str, history: list[dict] | None = None) -> dict:
         original = original.strip()
@@ -56,6 +79,13 @@ class AuraEngine:
         key = normalized(original).rstrip('.!?')
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
+
+        if key in ('estado dos chiplets', 'diagnostico dos chiplets',
+                   'estado dos modulos'):
+            status = self.chiplet_status()
+            return reply(f"Tenho {status['active_count']} módulos ativos e "
+                         f"{len(status['standby'])} em espera.",
+                         data=status)
 
         # v5.1: Reflection is opt-in; feedback notes are never treated as instructions.
         m=re.match(r'^feedback explicacao (curta|longa|boa)\s*:\s*(.*)$',key)
