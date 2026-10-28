@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from .config import Settings, ROOT
 from .database import Database
 from .engine import AuraEngine
-from .security import SecureBackupManager, VaultError
+from .security import VaultError
 
 
 class Message(BaseModel):
@@ -29,7 +29,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     db = Database(settings.data_dir / 'aura.sqlite3', passphrase=settings.database_passphrase,
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
-    secure = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -39,8 +38,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async def backup_loop():
             while not stop.is_set():
                 try:
-                    if secure.enabled:
-                        await asyncio.to_thread(secure.backup_if_due, settings.memory_backup_days)
+                    if len(settings.backup_passphrase) >= 12:
+                        await asyncio.to_thread(engine.secure_backups.backup_if_due,
+                                                settings.memory_backup_days)
                 except (OSError, ValueError):
                     logging.getLogger('aura').exception('Não foi possível criar backup automático')
                 try:
@@ -171,7 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 'consolidation':engine.consolidation.stats(),
                 'no_automatic_deletion':True,
                 'private_mode': db.get_option('private_mode','false')=='true',
-                'encrypted_backups_enabled':secure.enabled,
+                'encrypted_backups_enabled':len(settings.backup_passphrase) >= 12,
                 'active_database_encrypted':db.encrypted,
                 'database_path':str(db.path)}
 
@@ -274,7 +274,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 'memory_months': settings.episodic_lookback_months,
                 'episodic_capture': db.capture_enabled(settings.episodic_capture),
                 'private_mode': db.get_option('private_mode','false')=='true',
-                'encrypted_backups_enabled':secure.enabled,
+                'encrypted_backups_enabled':len(settings.backup_passphrase) >= 12,
                 'auto_extract':db.get_option('auto_extract_memory','true' if settings.auto_extract_memory else 'false')=='true',
                 'auto_link':db.get_option('auto_link_memory','true' if settings.auto_link_memory else 'false')=='true',
                 'auto_consolidate':db.get_option('auto_consolidate_memory',
