@@ -119,3 +119,26 @@ def test_chiplet_status_api_is_read_only(tmp_path):
         assert r.status_code == 200
         assert r.json()['active_count'] == 0
         assert len(r.json()['standby']) >= 10
+
+
+def test_memory_daemon_does_not_wake_expensive_services_when_idle(tmp_path):
+    """Even when indexing and extraction are enabled, idle means no activation."""
+    import asyncio
+    from aura.config import Settings
+    from aura.database import Database
+    from aura.engine import AuraEngine
+
+    settings = Settings(data_dir=tmp_path, database_encryption_required=False,
+                        embedding_model='unused-local-embedding',
+                        auto_extract_memory=True)
+    engine = AuraEngine(settings, Database(tmp_path / 'idle.sqlite3'))
+
+    async def run_one_idle_cycle():
+        stop = asyncio.Event()
+        task = asyncio.create_task(engine.memory_daemon(stop))
+        await asyncio.sleep(0.02)
+        stop.set()
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(run_one_idle_cycle())
+    assert engine.chiplet_status()['active_count'] == 0
