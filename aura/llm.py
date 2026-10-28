@@ -1,5 +1,6 @@
 """Ollama is optional; when offline we report the limitation instead of hallucinating."""
 from __future__ import annotations
+import asyncio
 import httpx
 import json
 from .config import Settings
@@ -199,6 +200,9 @@ class Ollama:
             result = await self.compute.limiter.run(invoke)
             self._circuit.success()
             return result
+        except asyncio.CancelledError:
+            self._circuit.release_probe()
+            raise
         except ComputeBusyError:
             self._circuit.release_probe()
             return ('O motor de inferência está ocupado. Aguarda o fim dos pedidos '
