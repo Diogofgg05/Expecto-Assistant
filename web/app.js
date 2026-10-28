@@ -11,7 +11,7 @@
   const input=document.getElementById('command-input');
   const clock=document.getElementById('clock');
   const state={panels:new Map(),busy:false,listening:false,recognition:null,
-               history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
+               localRecording:null,voiceFailure:null,history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
   if(!state.sessionId){state.sessionId=(window.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));sessionStorage.setItem('aura_session_id',state.sessionId);}
   const LABELS={memory:'MEMÓRIA',research:'CONHECIMENTO',browser:'BROWSER · FONTES',
                 jobs:'INVESTIGAÇÕES AUTÓNOMAS',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
@@ -203,26 +203,93 @@
     finally{state.busy=false;}
   }
   function edit(){shell.hidden=false;input.focus();}
-  function voice(){
+  function voiceErrorMessage(code){
+    const details={
+      network:'O serviço de reconhecimento do navegador falhou (network). Podes ativar o reconhecimento local offline; o áudio não será enviado a terceiros.',
+      'not-allowed':'Permissão do microfone recusada. Autoriza o microfone nas definições do navegador para localhost.',
+      'service-not-allowed':'O reconhecimento de voz do navegador foi bloqueado.',
+      'audio-capture':'Microfone indisponível. Verifica o dispositivo de entrada no Windows.',
+      'no-speech':'Não foi detetada voz. Experimenta novamente.',
+      aborted:'Reconhecimento interrompido.'
+    };
+    return details[code]||'Falha no reconhecimento ('+code+'). Usa / para escrever.';
+  }
+  async function captureLocalVoice(){
+    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){
+      sayText('Este navegador não permite gravar áudio localmente. Usa localhost e verifica as permissões.',true);return;
+    }
+    if(!window.isSecureContext){sayText('O microfone exige uma origem segura (localhost ou HTTPS).',true);return;}
+    let stream;
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+      const mime=['audio/webm;codecs=opus','audio/webm','audio/ogg','audio/mp4'].find(x=>MediaRecorder.isTypeSupported(x));
+      if(!mime){stream.getTracks().forEach(x=>x.stop());sayText('Formato de áudio não suportado pelo navegador.',true);return;}
+      const recorder=new MediaRecorder(stream,{mimeType:mime});
+      const chunks=[];
+      let size=0;
+      const stopTimer=setTimeout(()=>{if(recorder.state==='recording')recorder.stop();},14000);
+      const capture={recorder,stream,stopTimer};state.localRecording=capture;
+      recorder.ondataavailable=e=>{
+        if(e.data?.size){size+=e.data.size;if(size<=8*1024*1024)chunks.push(e.data);}
+        if(size>8*1024*1024&&recorder.state==='recording')recorder.stop();
+      };
+      recorder.onerror=()=>sayText('Falhou a captura de áudio. Verifica as permissões do microfone.',true);
+      recorder.onstop=async()=>{
+        clearTimeout(stopTimer);stream.getTracks().forEach(x=>x.stop());state.localRecording=null;state.listening=false;
+        if(size>8*1024*1024){setMode('idle');sayText('O áudio excede o limite de 8 MB.',true);return;}
+        if(!chunks.length){setMode('idle');sayText('Não foi capturado áudio.',true);return;}
+        setMode('thinking');sayText('A transcrever localmente…');
+        try{
+          const result=await fetch('/api/voice/transcribe',{method:'POST',headers:{'Content-Type':mime.split(';')[0]},body:new Blob(chunks,{type:mime})});
+          if(!result.ok)throw new Error('Transcrição indisponível (HTTP '+result.status+').');
+          const data=await result.json();if(data.text?.trim())await send(data.text);
+          else{setMode('idle');sayText('Não foi identificada fala. Tenta novamente.');}
+        }catch(err){setMode('idle');sayText('Voz local: '+err.message,true);}
+      };
+      recorder.start(250);state.listening=true;setMode('listening');
+      sayText('A ouvir localmente… pressiona V para terminar (máximo 14 s).');
+    }catch(err){
+      stream?.getTracks().forEach(x=>x.stop());state.listening=false;setMode('idle');
+      sayText('Microfone: '+(err.name==='NotAllowedError'?'permissão recusada':err.message)+'.',true);
+    }
+  }
+  async function voice(){
     if(state.busy)return;
+    if(state.localRecording){if(state.localRecording.recorder.state==='recording')state.localRecording.recorder.stop();return;}
     if(state.listening){state.recognition?.stop();return;}
-    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!Recognition){sayText('Este navegador não suporta reconhecimento de voz. Usa / para escrever.',true);return;}
     window.speechSynthesis?.cancel();
+    // An explicitly configured offline model avoids the Web Speech network
+    // backend and keeps audio on this same-origin localhost server.
+    let local=false;
+    try{const r=await fetch('/api/voice/diagnostics');if(r.ok)local=!!(await r.json()).configured;}catch(_){}
+    if(local){await captureLocalVoice();return;}
+    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!Recognition){sayText('Este navegador não suporta SpeechRecognition. Configura voz local ou usa / para escrever.',true);return;}
     const rec=new Recognition();state.recognition=rec;
     rec.lang='pt-PT';rec.interimResults=true;rec.continuous=false;
-    rec.onstart=()=>{state.listening=true;setMode('listening');sayText('Estou a ouvir...');};
-    let final='';
+    let final='',failure='';
+    rec.onstart=()=>{state.listening=true;setMode('listening');sayText('Estou a ouvir…');};
     rec.onresult=(event)=>{
       let partial='';for(let i=event.resultIndex;i<event.results.length;i++){
         const content=event.results[i][0].transcript;
         if(event.results[i].isFinal)final+=content+' ';else partial+=content+' ';
       }
-      sayText((final+partial).trim()||'Estou a ouvir...');
+      sayText((final+partial).trim()||'Estou a ouvir…');
     };
-    rec.onerror=(event)=>{if(event.error!=='no-speech'&&event.error!=='aborted')sayText('Microfone: '+event.error+'. Usa / para escrever.',true);};
-    rec.onend=()=>{state.listening=false;setMode('idle');const command=final.trim();if(command)send(command);};
-    try{rec.start();}catch{state.listening=false;setMode('idle');sayText('Não foi possível iniciar o microfone.',true);}
+    rec.onerror=(event)=>{
+      failure=event.error||'unknown';
+      if(failure!=='aborted'&&failure!=='no-speech')sayText(voiceErrorMessage(failure),true);
+    };
+    rec.onend=()=>{
+      state.listening=false;state.recognition=null;setMode('idle');
+      const command=final.trim();
+      if(command)send(command);
+      else if(failure==='network')sayText(voiceErrorMessage('network'),true);
+    };
+    try{rec.start();}catch(err){
+      state.listening=false;state.recognition=null;setMode('idle');
+      sayText('Não foi possível iniciar o reconhecimento: '+err.message,true);
+    }
   }
   document.addEventListener('keydown',(e)=>{
     if(e.ctrlKey||e.altKey||e.metaKey)return;
