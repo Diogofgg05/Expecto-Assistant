@@ -11,7 +11,7 @@
   const input=document.getElementById('command-input');
   const clock=document.getElementById('clock');
   const state={panels:new Map(),busy:false,listening:false,recognition:null,
-               localRecording:null,voiceFailure:null,history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
+               localRecording:null,voiceFailure:null,abortController:null,history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
   if(!state.sessionId){state.sessionId=(window.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));sessionStorage.setItem('aura_session_id',state.sessionId);}
   const LABELS={memory:'MEMÓRIA',research:'CONHECIMENTO',browser:'BROWSER · FONTES',
                 jobs:'INVESTIGAÇÕES AUTÓNOMAS',mathematics:'MATEMÁTICA · CÁLCULO EXATO',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
@@ -197,15 +197,63 @@
     const msg=(command||'').trim();if(!msg)return;
     state.busy=true;setMode('thinking');sayText('A analisar: '+msg);
     shell.hidden=true;input.blur();
+    const controller=new AbortController();state.abortController=controller;
+    const request={message:msg,history:state.history.slice(-6),session_id:state.sessionId};
+    let payload=null,preview='',lastFrame=0;
     try{
-      const res=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({message:msg,history:state.history.slice(-6),session_id:state.sessionId})});
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      const data=await res.json();respond(data);
-      state.history.push({role:'user',content:msg},{role:'assistant',content:data.text||''});
+      const headers={'Content-Type':'application/json'};
+      let res=await fetch('/api/command/stream',{method:'POST',headers,
+        body:JSON.stringify(request),signal:controller.signal});
+      if(res.status===404){
+        // Backward-compatible local server: no fake streaming for legacy API.
+        res=await fetch('/api/command',{method:'POST',headers,
+          body:JSON.stringify(request),signal:controller.signal});
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        payload=await res.json();
+      }else{
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        if(!res.body?.getReader)throw new Error('O navegador não suporta streaming HTTP.');
+        const reader=res.body.getReader(),decoder=new TextDecoder();
+        let pending='';
+        while(true){
+          const {value,done}=await reader.read();
+          if(done)break;
+          pending+=decoder.decode(value,{stream:true});
+          if(pending.length>64000)throw new Error('Fluxo de resposta inválido.');
+          const frames=pending.split(/\r?\n\r?\n/);
+          pending=frames.pop();
+          for(const frame of frames){
+            const line=frame.split(/\r?\n/).find(x=>x.startsWith('data: '));
+            if(!line)continue;
+            const event=JSON.parse(line.slice(6));
+            if(event.type==='token'){
+              preview+=String(event.text||'');
+              if(preview.length>12000)throw new Error('Resposta demasiado longa.');
+              const now=performance.now();
+              if(now-lastFrame>=80){
+                sayText('RASCUNHO · sujeito a verificação\n'+preview);
+                lastFrame=now;
+              }
+            }else if(event.type==='final'){
+              payload=event.payload;
+            }else if(event.type==='error'){
+              throw new Error(event.message||'Falha na geração.');
+            }
+          }
+        }
+        if(!payload)throw new Error('A ligação terminou antes da resposta final.');
+      }
+      respond(payload);
+      state.history.push({role:'user',content:msg},{role:'assistant',content:payload.text||''});
       state.history=state.history.slice(-10);
-    }catch(err){setMode('idle');sayText('Sem ligação à Expecto. Verifica se o servidor está iniciado. ('+err.message+')',true);}
-    finally{state.busy=false;}
+    }catch(err){
+      setMode('idle');
+      sayText(controller.signal.aborted?'Pedido interrompido.':
+        'Sem ligação à Expecto. Verifica se o servidor está iniciado. ('+err.message+')',!controller.signal.aborted);
+    }finally{
+      state.busy=false;
+      if(state.abortController===controller)state.abortController=null;
+    }
   }
   function edit(){shell.hidden=false;input.focus();}
   function voiceErrorMessage(code){
@@ -305,7 +353,13 @@
     }
     if(e.key==='/'){e.preventDefault();edit();}
     if(e.key.toLowerCase()==='v'&&!e.repeat){e.preventDefault();voice();}
-    if(e.key==='Escape'){e.preventDefault();closeAll();window.speechSynthesis?.cancel();setMode('idle');sayText('Modo central.');}
+    if(e.key==='Escape'){
+      e.preventDefault();
+      state.abortController?.abort();
+      if(state.localRecording?.recorder?.state==='recording')state.localRecording.recorder.stop();
+      state.recognition?.abort();
+      closeAll();window.speechSynthesis?.cancel();setMode('idle');sayText('Modo central.');
+    }
   });
   function renderClock(){const d=new Date();clock.textContent=d.toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'});}
   renderClock();setInterval(renderClock,10000);
