@@ -1,0 +1,64 @@
+name: Generate real frontend previews
+on:
+  push:
+    branches:
+      - docs/refresh-app-previews-2026
+    paths:
+      - scripts/render_app_previews.py
+      - web/**
+      - docs/previews/README.md
+      - .github/workflows/render-previews.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser renderer
+        run: |
+          python -m pip install 'playwright>=1.55,<2'
+          python -m playwright install --with-deps chromium
+          ffmpeg -version | head -1
+      - name: Render PNG screenshots and MP4 previews
+        run: python scripts/render_app_previews.py
+      - name: Validate resulting images and videos
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          p=Path('docs/previews')
+          for filename in [
+              '21-interface-inicial-2026.png',
+              '22-memoria-demonstracao-2026.png',
+              '23-patronum-demonstracao-2026.png',
+              '24-diagnosticos-demonstracao-2026.png',
+              '25-pesquisa-demonstracao-2026.png',
+              '26-voz-estado-demonstracao-2026.png',
+          ]:
+              f=p/filename
+              with Image.open(f) as image:
+                  assert image.format=='PNG' and image.size==(1280,720), f
+          for filename in ['27-holograma-em-movimento.mp4','28-paineis-dinamicos.mp4']:
+              f=p/filename
+              assert f.is_file() and f.stat().st_size>2000, f
+          print('6 PNG reais e 2 MP4 de demonstração validados.')
+          PY
+      - name: Commit generated media to preview branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/previews/2*-2026.png docs/previews/27-*.mp4 docs/previews/28-*.mp4
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(previews): render verified browser PNGs and MP4 demos [skip ci]"
+            git push
+          else
+            echo "Previews already match rendered output."
+          fi
