@@ -17,6 +17,7 @@ from .database import Database
 from .engine import AuraEngine
 from .security import VaultError
 from .voice_sessions import VoiceSessions, VoiceCapacityError
+from .local_stt import LocalSpeech, STTUnavailable, STTInvalidAudio
 
 
 class VoiceListen(BaseModel):
@@ -50,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
     voice_sessions = VoiceSessions()
+    local_speech = LocalSpeech(settings.local_stt_model_dir)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -118,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
     app.state.engine = engine
     app.state.voice_sessions = voice_sessions
+    app.state.local_speech = local_speech
     app.state.db = db
     app.state.settings = settings
 
@@ -128,6 +131,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Local session control only. No microphone, transcription or TTS backend is
     # started by these routes. No text or audio is persisted by VoiceSessions.
+    @app.get('/api/voice/diagnostics')
+    async def voice_diagnostics():
+        return local_speech.status()
+
+    @app.post('/api/voice/transcribe')
+    async def voice_transcribe(request: Request):
+        # No multipart dependency or persistent files. Hard cap before reading.
+        if not local_speech.configured:
+            raise HTTPException(503, 'Reconhecimento local não configurado')
+        length = request.headers.get('content-length')
+        if length:
+            try:
+                if int(length) > LocalSpeech.MAX_AUDIO_BYTES:
+                    raise HTTPException(413, 'Áudio demasiado grande')
+            except ValueError:
+                raise HTTPException(400, 'Content-Length inválido')
+        mime = request.headers.get('content-type', '').split(';', 1)[0].lower().strip()
+        if mime not in LocalSpeech.ALLOWED_TYPES:
+            raise HTTPException(415, 'Formato de áudio não suportado')
+        audio = bytearray()
+        async for chunk in request.stream():
+            audio.extend(chunk)
+            if len(audio) > LocalSpeech.MAX_AUDIO_BYTES:
+                raise HTTPException(413, 'Áudio demasiado grande')
+        try:
+            text = await asyncio.wait_for(
+                asyncio.to_thread(local_speech.transcribe, bytes(audio), mime), timeout=75)
+            return {'text': text, 'language': 'pt', 'source': 'local_offline'}
+        except STTUnavailable as exc:
+            raise HTTPException(503, str(exc))
+        except STTInvalidAudio as exc:
+            raise HTTPException(422, str(exc))
+        except asyncio.TimeoutError:
+            raise HTTPException(504, 'Tempo limite da transcrição excedido')
+
     @app.post('/api/voice/listen')
     async def voice_listen(payload: VoiceListen):
         try:
