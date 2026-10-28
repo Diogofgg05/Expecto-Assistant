@@ -11,10 +11,10 @@
   const input=document.getElementById('command-input');
   const clock=document.getElementById('clock');
   const state={panels:new Map(),busy:false,listening:false,recognition:null,
-               history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
+               localRecording:null,voiceFailure:null,abortController:null,history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
   if(!state.sessionId){state.sessionId=(window.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));sessionStorage.setItem('aura_session_id',state.sessionId);}
   const LABELS={memory:'MEMÓRIA',research:'CONHECIMENTO',browser:'BROWSER · FONTES',
-                jobs:'INVESTIGAÇÕES AUTÓNOMAS',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
+                jobs:'INVESTIGAÇÕES AUTÓNOMAS',mathematics:'MATEMÁTICA · CÁLCULO EXATO',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
   const setMode=(m)=>{app.classList.remove('listening','thinking','speaking');if(m!=='idle')app.classList.add(m);presence.textContent=({idle:'SISTEMA DISPONÍVEL',listening:'A OUVIR',thinking:'A PROCESSAR',speaking:'A RESPONDER'})[m]||m.toUpperCase();window.AuraOrb?.setMode(m);};
   function sayText(text,error=false){
     transcript.textContent=text||'';transcript.classList.toggle('error',error);
@@ -39,7 +39,9 @@
   function loadPanel(name,data){
     const panel=state.panels.get(name);if(!panel)return;
     const body=panel.querySelector('.panel-body');body.replaceChildren();
-    if(name==='patronum'){
+    if(name==='mathematics'){
+      if(!window.ExpectoMath?.render(body,data))body.append(el('div','panel-empty','Formato matemático indisponível.'));
+    }else if(name==='patronum'){
       body.append(el('div','patronum-sigil','✦  EXPECTO PATRONUM  ✦'));
       stat(body,'MODO','ATIVO');stat(body,'OLLAMA',data?.ollama_available?'DISPONÍVEL':'NÃO DISPONÍVEL');
       stat(body,'MEMÓRIAS',String(data?.memories ?? 0));
@@ -172,6 +174,9 @@
   function closePanel(name){const p=state.panels.get(name);if(p){p.remove();state.panels.delete(name);}layout();}
   function closeAll(){for(const p of state.panels.values())p.remove();state.panels.clear();layout();}
   function respond(payload){
+    if(payload?.data?.reasoning?.status==='exact_algebra'){
+      openPanel('mathematics',payload.data.reasoning);
+    }
     if(payload.action?.type==='patronum'){
       app.classList.add('patronum');openPanel('patronum',payload.data);
     }else if(payload.action?.type==='patronum_off'){
@@ -192,37 +197,152 @@
     const msg=(command||'').trim();if(!msg)return;
     state.busy=true;setMode('thinking');sayText('A analisar: '+msg);
     shell.hidden=true;input.blur();
+    const controller=new AbortController();state.abortController=controller;
+    const request={message:msg,history:state.history.slice(-6),session_id:state.sessionId};
+    let payload=null,preview='',lastFrame=0;
     try{
-      const res=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({message:msg,history:state.history.slice(-6),session_id:state.sessionId})});
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      const data=await res.json();respond(data);
-      state.history.push({role:'user',content:msg},{role:'assistant',content:data.text||''});
+      const headers={'Content-Type':'application/json'};
+      let res=await fetch('/api/command/stream',{method:'POST',headers,
+        body:JSON.stringify(request),signal:controller.signal});
+      if(res.status===404){
+        // Backward-compatible local server: no fake streaming for legacy API.
+        res=await fetch('/api/command',{method:'POST',headers,
+          body:JSON.stringify(request),signal:controller.signal});
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        payload=await res.json();
+      }else{
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        if(!res.body?.getReader)throw new Error('O navegador não suporta streaming HTTP.');
+        const reader=res.body.getReader(),decoder=new TextDecoder();
+        let pending='';
+        while(true){
+          const {value,done}=await reader.read();
+          if(done)break;
+          pending+=decoder.decode(value,{stream:true});
+          if(pending.length>64000)throw new Error('Fluxo de resposta inválido.');
+          const frames=pending.split(/\r?\n\r?\n/);
+          pending=frames.pop();
+          for(const frame of frames){
+            const line=frame.split(/\r?\n/).find(x=>x.startsWith('data: '));
+            if(!line)continue;
+            const event=JSON.parse(line.slice(6));
+            if(event.type==='token'){
+              preview+=String(event.text||'');
+              if(preview.length>12000)throw new Error('Resposta demasiado longa.');
+              const now=performance.now();
+              if(now-lastFrame>=80){
+                sayText('RASCUNHO · sujeito a verificação\n'+preview);
+                lastFrame=now;
+              }
+            }else if(event.type==='final'){
+              payload=event.payload;
+            }else if(event.type==='error'){
+              throw new Error(event.message||'Falha na geração.');
+            }
+          }
+        }
+        if(!payload)throw new Error('A ligação terminou antes da resposta final.');
+      }
+      respond(payload);
+      state.history.push({role:'user',content:msg},{role:'assistant',content:payload.text||''});
       state.history=state.history.slice(-10);
-    }catch(err){setMode('idle');sayText('Sem ligação à Expecto. Verifica se o servidor está iniciado. ('+err.message+')',true);}
-    finally{state.busy=false;}
+    }catch(err){
+      setMode('idle');
+      sayText(controller.signal.aborted?'Pedido interrompido.':
+        'Sem ligação à Expecto. Verifica se o servidor está iniciado. ('+err.message+')',!controller.signal.aborted);
+    }finally{
+      state.busy=false;
+      if(state.abortController===controller)state.abortController=null;
+    }
   }
   function edit(){shell.hidden=false;input.focus();}
-  function voice(){
+  function voiceErrorMessage(code){
+    const details={
+      network:'O serviço de reconhecimento do navegador falhou (network). Podes ativar o reconhecimento local offline; o áudio não será enviado a terceiros.',
+      'not-allowed':'Permissão do microfone recusada. Autoriza o microfone nas definições do navegador para localhost.',
+      'service-not-allowed':'O reconhecimento de voz do navegador foi bloqueado.',
+      'audio-capture':'Microfone indisponível. Verifica o dispositivo de entrada no Windows.',
+      'no-speech':'Não foi detetada voz. Experimenta novamente.',
+      aborted:'Reconhecimento interrompido.'
+    };
+    return details[code]||'Falha no reconhecimento ('+code+'). Usa / para escrever.';
+  }
+  async function captureLocalVoice(){
+    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){
+      sayText('Este navegador não permite gravar áudio localmente. Usa localhost e verifica as permissões.',true);return;
+    }
+    if(!window.isSecureContext){sayText('O microfone exige uma origem segura (localhost ou HTTPS).',true);return;}
+    let stream;
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+      const mime=['audio/webm;codecs=opus','audio/webm','audio/ogg','audio/mp4'].find(x=>MediaRecorder.isTypeSupported(x));
+      if(!mime){stream.getTracks().forEach(x=>x.stop());sayText('Formato de áudio não suportado pelo navegador.',true);return;}
+      const recorder=new MediaRecorder(stream,{mimeType:mime});
+      const chunks=[];
+      let size=0;
+      const stopTimer=setTimeout(()=>{if(recorder.state==='recording')recorder.stop();},14000);
+      const capture={recorder,stream,stopTimer};state.localRecording=capture;
+      recorder.ondataavailable=e=>{
+        if(e.data?.size){size+=e.data.size;if(size<=8*1024*1024)chunks.push(e.data);}
+        if(size>8*1024*1024&&recorder.state==='recording')recorder.stop();
+      };
+      recorder.onerror=()=>sayText('Falhou a captura de áudio. Verifica as permissões do microfone.',true);
+      recorder.onstop=async()=>{
+        clearTimeout(stopTimer);stream.getTracks().forEach(x=>x.stop());state.localRecording=null;state.listening=false;
+        if(size>8*1024*1024){setMode('idle');sayText('O áudio excede o limite de 8 MB.',true);return;}
+        if(!chunks.length){setMode('idle');sayText('Não foi capturado áudio.',true);return;}
+        setMode('thinking');sayText('A transcrever localmente…');
+        try{
+          const result=await fetch('/api/voice/transcribe',{method:'POST',headers:{'Content-Type':mime.split(';')[0]},body:new Blob(chunks,{type:mime})});
+          if(!result.ok)throw new Error('Transcrição indisponível (HTTP '+result.status+').');
+          const data=await result.json();if(data.text?.trim())await send(data.text);
+          else{setMode('idle');sayText('Não foi identificada fala. Tenta novamente.');}
+        }catch(err){setMode('idle');sayText('Voz local: '+err.message,true);}
+      };
+      recorder.start(250);state.listening=true;setMode('listening');
+      sayText('A ouvir localmente… pressiona V para terminar (máximo 14 s).');
+    }catch(err){
+      stream?.getTracks().forEach(x=>x.stop());state.listening=false;setMode('idle');
+      sayText('Microfone: '+(err.name==='NotAllowedError'?'permissão recusada':err.message)+'.',true);
+    }
+  }
+  async function voice(){
     if(state.busy)return;
+    if(state.localRecording){if(state.localRecording.recorder.state==='recording')state.localRecording.recorder.stop();return;}
     if(state.listening){state.recognition?.stop();return;}
-    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!Recognition){sayText('Este navegador não suporta reconhecimento de voz. Usa / para escrever.',true);return;}
     window.speechSynthesis?.cancel();
+    // An explicitly configured offline model avoids the Web Speech network
+    // backend and keeps audio on this same-origin localhost server.
+    let local=false;
+    try{const r=await fetch('/api/voice/diagnostics');if(r.ok)local=!!(await r.json()).configured;}catch(_){}
+    if(local){await captureLocalVoice();return;}
+    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!Recognition){sayText('Este navegador não suporta SpeechRecognition. Configura voz local ou usa / para escrever.',true);return;}
     const rec=new Recognition();state.recognition=rec;
     rec.lang='pt-PT';rec.interimResults=true;rec.continuous=false;
-    rec.onstart=()=>{state.listening=true;setMode('listening');sayText('Estou a ouvir...');};
-    let final='';
+    let final='',failure='';
+    rec.onstart=()=>{state.listening=true;setMode('listening');sayText('Estou a ouvir…');};
     rec.onresult=(event)=>{
       let partial='';for(let i=event.resultIndex;i<event.results.length;i++){
         const content=event.results[i][0].transcript;
         if(event.results[i].isFinal)final+=content+' ';else partial+=content+' ';
       }
-      sayText((final+partial).trim()||'Estou a ouvir...');
+      sayText((final+partial).trim()||'Estou a ouvir…');
     };
-    rec.onerror=(event)=>{if(event.error!=='no-speech'&&event.error!=='aborted')sayText('Microfone: '+event.error+'. Usa / para escrever.',true);};
-    rec.onend=()=>{state.listening=false;setMode('idle');const command=final.trim();if(command)send(command);};
-    try{rec.start();}catch{state.listening=false;setMode('idle');sayText('Não foi possível iniciar o microfone.',true);}
+    rec.onerror=(event)=>{
+      failure=event.error||'unknown';
+      if(failure!=='aborted'&&failure!=='no-speech')sayText(voiceErrorMessage(failure),true);
+    };
+    rec.onend=()=>{
+      state.listening=false;state.recognition=null;setMode('idle');
+      const command=final.trim();
+      if(command)send(command);
+      else if(failure==='network')sayText(voiceErrorMessage('network'),true);
+    };
+    try{rec.start();}catch(err){
+      state.listening=false;state.recognition=null;setMode('idle');
+      sayText('Não foi possível iniciar o reconhecimento: '+err.message,true);
+    }
   }
   document.addEventListener('keydown',(e)=>{
     if(e.ctrlKey||e.altKey||e.metaKey)return;
@@ -233,7 +353,13 @@
     }
     if(e.key==='/'){e.preventDefault();edit();}
     if(e.key.toLowerCase()==='v'&&!e.repeat){e.preventDefault();voice();}
-    if(e.key==='Escape'){e.preventDefault();closeAll();window.speechSynthesis?.cancel();setMode('idle');sayText('Modo central.');}
+    if(e.key==='Escape'){
+      e.preventDefault();
+      state.abortController?.abort();
+      if(state.localRecording?.recorder?.state==='recording')state.localRecording.recorder.stop();
+      state.recognition?.abort();
+      closeAll();window.speechSynthesis?.cancel();setMode('idle');sayText('Modo central.');
+    }
   });
   function renderClock(){const d=new Date();clock.textContent=d.toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'});}
   renderClock();setInterval(renderClock,10000);
