@@ -16,6 +16,26 @@ from .config import Settings, ROOT
 from .database import Database
 from .engine import AuraEngine
 from .security import VaultError
+from .voice_sessions import VoiceSessions, VoiceCapacityError
+
+
+class VoiceListen(BaseModel):
+    session_id: str | None = Field(default=None, max_length=128)
+
+
+class VoicePayload(BaseModel):
+    session_id: str = Field(min_length=10, max_length=128)
+    generation: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class VoiceGeneration(BaseModel):
+    session_id: str = Field(min_length=10, max_length=128)
+    generation: int = Field(ge=1)
+
+
+class VoiceStop(BaseModel):
+    session_id: str = Field(min_length=10, max_length=128)
 
 
 class Message(BaseModel):
@@ -29,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     db = Database(settings.data_dir / 'aura.sqlite3', passphrase=settings.database_passphrase,
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
+    voice_sessions = VoiceSessions()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -96,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         return response
     app.state.engine = engine
+    app.state.voice_sessions = voice_sessions
     app.state.db = db
     app.state.settings = settings
 
@@ -103,6 +125,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health():
         return {'status': 'ok', 'version': '3.3.0-fact-verification',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
+
+    # Local session control only. No microphone, transcription or TTS backend is
+    # started by these routes. No text or audio is persisted by VoiceSessions.
+    @app.post('/api/voice/listen')
+    async def voice_listen(payload: VoiceListen):
+        try:
+            return voice_sessions.listen(payload.session_id)
+        except KeyError:
+            raise HTTPException(404, 'Voice session not found')
+        except VoiceCapacityError:
+            raise HTTPException(429, 'Too many active voice sessions')
+
+    @app.post('/api/voice/transcript')
+    async def voice_transcript(payload: VoicePayload):
+        try:
+            return voice_sessions.transcript(payload.session_id, payload.generation, payload.text)
+        except KeyError:
+            raise HTTPException(404, 'Voice session not found')
+
+    @app.post('/api/voice/answer')
+    async def voice_answer(payload: VoicePayload):
+        try:
+            return voice_sessions.answer(payload.session_id, payload.generation, payload.text)
+        except KeyError:
+            raise HTTPException(404, 'Voice session not found')
+
+    @app.post('/api/voice/finished')
+    async def voice_finished(payload: VoiceGeneration):
+        try:
+            return voice_sessions.finished(payload.session_id, payload.generation)
+        except KeyError:
+            raise HTTPException(404, 'Voice session not found')
+
+    @app.post('/api/voice/stop')
+    async def voice_stop(payload: VoiceStop):
+        try:
+            return voice_sessions.stop(payload.session_id)
+        except KeyError:
+            raise HTTPException(404, 'Voice session not found')
+
+    @app.get('/api/voice/status/{session_id}')
+    async def voice_status(session_id: str):
+        try:
+            return voice_sessions.status(session_id)
+        except KeyError:
+            raise HTTPException(404, 'Voice session not found')
 
     @app.get('/api/chiplets')
     async def chiplet_metrics():
