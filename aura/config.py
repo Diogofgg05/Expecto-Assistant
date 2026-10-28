@@ -29,6 +29,13 @@ class Settings:
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'hermes3'
     embedding_model: str = ''
+    compute_profile: str = 'balanced'
+    compute_fast_model: str = ''
+    compute_memory_budget_mb: int = 0
+    compute_gpu_mode: str = 'auto'
+    compute_max_active: int = 2
+    compute_max_waiting: int = 4
+    reasoning_review_mode: str = 'balanced'  # off | balanced | deep
     searxng_url: str = ''
     research_interval_hours: int = 24
     voice_output: bool = True
@@ -56,6 +63,13 @@ class Settings:
             ollama_url=os.getenv('AURA_OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/'),
             ollama_model=os.getenv('AURA_OLLAMA_MODEL', 'hermes3'),
             embedding_model=os.getenv('AURA_EMBEDDING_MODEL', ''),
+            compute_profile=os.getenv('AURA_COMPUTE_PROFILE', 'balanced'),
+            compute_fast_model=os.getenv('AURA_COMPUTE_FAST_MODEL', ''),
+            compute_memory_budget_mb=int(os.getenv('AURA_COMPUTE_MEMORY_BUDGET_MB', '0')),
+            compute_gpu_mode=os.getenv('AURA_COMPUTE_GPU_MODE', 'auto'),
+            compute_max_active=int(os.getenv('AURA_COMPUTE_MAX_ACTIVE', '2')),
+            compute_max_waiting=int(os.getenv('AURA_COMPUTE_MAX_WAITING', '4')),
+            reasoning_review_mode=os.getenv('AURA_REASONING_REVIEW_MODE', 'balanced'),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
             voice_output=os.getenv('AURA_VOICE_OUTPUT', 'true').lower() not in ('false', '0', 'no'),
