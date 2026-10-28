@@ -1,6 +1,6 @@
 """Independent, deterministic adversarial exact-math regression corpus.
 
-These 144 tests check only bounded algebraic operations, not general LLM IQ.
+These 60 cases check only bounded algebraic operations, not general LLM IQ.
 Independent ground truth is built from the 2x2 closed-form determinant and
 preselected solutions substituted into equations.
 """
@@ -14,7 +14,7 @@ def _samples():
         for b in (-3, 0, 2):
             c = a + 2
             d = b - 1
-            # 81 cases, including zero, negative and singular matrices.
+            # 27 cases, including zero, negative and singular matrices.
             expected = a * d - b * c
             cases.append((f"Calcula o determinante de [[{a},{b}],[{c},{d}]]", expected))
     return cases
