@@ -17,6 +17,8 @@ from .adaptive_compute import classify_task
 from .algebra_natural import explain
 from .algebra_verifier import AlgebraError
 from .reasoning_verifier import check_calculations, VerificationError
+import httpx
+from .adaptive_compute import ComputeBusyError
 
 ReviewCall = Callable[[str], Awaitable[str]]
 
@@ -203,7 +205,7 @@ class ReasoningRuntime:
             issues = [item.strip()[:220] for item in raw_issues if item.strip()]
             needs_revision = data["needs_revision"] and bool(issues)
         except (ValueError, TypeError, KeyError, json.JSONDecodeError,
-                asyncio.TimeoutError, OSError):
+                asyncio.TimeoutError, OSError, httpx.HTTPError, ComputeBusyError):
             self._review_unavailable += 1
             needs_revision = False
             limitations.append("Crítica estruturada indisponível.")
