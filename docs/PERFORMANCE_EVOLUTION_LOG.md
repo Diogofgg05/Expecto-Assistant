@@ -215,3 +215,27 @@ A revisão de código é **análise estática de Python**, não execução em sa
 1. CI e avaliação RAG com conjunto gold rotulado (hit@k, MRR, fonte adulterada).
 2. Integração opcional e limitada da inspeção de Python no fluxo de perguntas de programação.
 3. Avaliação de tarefas reais de código com testes em sandbox externo e qualidade verificada, sem executar código de origem desconhecida no processo principal.
+
+## 2026-10-29 — Etapa 14: inspeção Python via comando natural/API e avaliação RAG ampliada (candidata)
+
+### Diagnóstico e estratégia
+O módulo estático `code_inspection.inspect_python` não tinha entrada pela API ou pelos comandos em linguagem natural. A avaliação documental `BookSemanticIndex.evaluate_retrieval` media apenas hit@k e MRR, insuficientes para perceber a cobertura de múltiplas passagens gold.
+
+### Implementação concreta
+- `aura/app.py`: novo `POST /api/code/inspect`, corpo `{"code": "..."}`, limite 25 000 caracteres, execução da inspeção AST em thread, sem execução de programas do utilizador; mantém os middlewares de origem local/CSRF.
+- `aura/engine.py`: comando explícito `analisa código Python:` (inclui blocos ```python`) com relatório estruturado e resumo em PT-PT, sem enviar código a modelos, nem gravar o conteúdo automaticamente.
+- `aura/book_semantics.py`: acrescenta recall@k, precision@k e dados detalhados por pergunta a hit@k e MRR, mantendo a API anterior. Normaliza IDs gold duplicados e valida k 1..20.
+- Adicionados `tests/test_code_inspect_api.py`, `tests/test_code_inspect_command.py` e `tests/test_rag_retrieval_metrics.py`; nenhuma dependência nova.
+
+### Validação realizada
+- Execução local *isolada* da implementação de avaliação e do encaminhamento de comando, com cópias dos trechos alterados: **9 testes passaram, 0 falhas, pytest 0,06 s**; `compileall` do conjunto isolado passou.
+- A suíte completa do repositório, os testes da API no FastAPI verdadeiro e testes de regressão CI não foram executados. Git clone não disponível por DNS neste ambiente.
+- Não existem ainda medições de hit@k/MRR/recall@k em documentos reais anotados, nem benchmark de inferência Ollama desta etapa. A alteração acrescenta diagnósticos mensuráveis, não demonstra ganho em precisão/latência.
+
+### Decisão
+**Candidata pendente de revisão e de execução do CI**. Mantidas funcionalidades anteriores, sem mudar modelos, pesos, serviços de nuvem ou gravação de conversas.
+
+### Próximas prioridades
+1. Executar todos os testes, em particular `pytest tests/test_code_inspect_api.py tests/test_code_inspect_command.py tests/test_rag_retrieval_metrics.py tests/test_book_semantics_v38.py -q`.
+2. Construir conjunto de perguntas gold reais do utilizador para medir recall@5, precision@5 e MRR antes/depois.
+3. Integrar relatório estruturado de programação na interface holográfica sem criar botões ou páginas permanentes.
