@@ -29,6 +29,7 @@ class Settings:
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'hermes3'
     embedding_model: str = ''
+    embedding_keepalive: bool = True  # may be disabled if Ollama proxy shows HTTP latency
     compute_profile: str = 'balanced'
     compute_fast_model: str = ''
     compute_memory_budget_mb: int = 0
@@ -68,6 +69,7 @@ class Settings:
             ollama_url=os.getenv('AURA_OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/'),
             ollama_model=os.getenv('AURA_OLLAMA_MODEL', 'hermes3'),
             embedding_model=os.getenv('AURA_EMBEDDING_MODEL', ''),
+            embedding_keepalive=os.getenv('AURA_EMBEDDING_KEEPALIVE', 'true').strip().lower() in ('true','1','yes'),
             compute_profile=os.getenv('AURA_COMPUTE_PROFILE', 'balanced'),
             compute_fast_model=os.getenv('AURA_COMPUTE_FAST_MODEL', ''),
             compute_memory_budget_mb=int(os.getenv('AURA_COMPUTE_MEMORY_BUDGET_MB', '0')),
