@@ -34,29 +34,52 @@ class BookResearchEngine:
                     merged[pid] = {**passage, 'queries_matched': [], 'fusion_score': 0.0}
                 merged[pid]['fusion_score'] += 1/(60+rank+1)
                 merged[pid]['queries_matched'].append(i+1)
-        ranked = sorted(merged.values(),key=lambda p:(-p['fusion_score'],-len(p['queries_matched']),p['book_id'],p['page'],p['passage_id']))
-        selected=[]
-        book_counts=defaultdict(int)
-        for passage in ranked:
+        ranked = sorted(merged.values(), key=lambda p: (
+            -p['fusion_score'], -len(p['queries_matched']),
+            p['book_id'], p['page'], p['passage_id']))
+        # Verify *before* allocating the limited evidence slots. Otherwise a
+        # stale top-ranked candidate can crowd out a valid lower-ranked source.
+        valid_candidates = []
+        with self.db.connect() as conn:
+            for passage in ranked:
+                original = conn.execute(
+                    'SELECT book_id,page,text,text_hash FROM book_passages WHERE id=?',
+                    (passage['passage_id'],)).fetchone()
+                if (not original or original['book_id'] != passage['book_id']
+                        or original['page'] != passage['page']
+                        or original['text'] != passage['text']
+                        or original['text_hash'] != passage['text_hash']):
+                    continue
+                # Detect stale/tampered source text even when the stored digest
+                # and the retrieved digest agree with each other.
+                if hashlib.sha256(original['text'].encode('utf-8')).hexdigest() != original['text_hash']:
+                    continue
+                valid_candidates.append(passage)
+        selected = []
+        book_counts = defaultdict(int)
+        token_cache = {}
+        for passage in valid_candidates:
             if book_counts[passage['book_id']] >= max_per_book:
                 continue
-            # Deduplicate highly overlapping excerpts from the same book, even across pages.
-            tokens = _words(passage['text'])
-            if any(passage['book_id']==chosen['book_id'] and len(tokens & _words(chosen['text'])) / max(1, min(len(tokens), len(_words(chosen['text'])))) >= .88
-                   for chosen in selected):
+            tokens = token_cache.setdefault(passage['passage_id'], _words(passage['text']))
+            overlap = False
+            for chosen in selected:
+                if passage['book_id'] != chosen['book_id']:
+                    continue
+                other = token_cache[chosen['passage_id']]
+                if len(tokens & other) / max(1, min(len(tokens), len(other))) >= .88:
+                    overlap = True
+                    break
+            if overlap:
                 continue
             selected.append(passage)
-            book_counts[passage['book_id']]+=1
-            if len(selected)==limit:
+            book_counts[passage['book_id']] += 1
+            if len(selected) >= limit:
                 break
-        # Double-check provenance after retrieval, so stale/corrupted passages cannot be claimed as evidence.
-        verified=[]
-        with self.db.connect() as conn:
-            for passage in selected:
-                original=conn.execute('SELECT book_id,page,text,text_hash FROM book_passages WHERE id=?',(passage['passage_id'],)).fetchone()
-                if not original or original['book_id'] != passage['book_id'] or original['page'] != passage['page'] or original['text'] != passage['text'] or original['text_hash'] != passage['text_hash']:
-                    continue
-                verified.append({k:v for k,v in passage.items() if k!='score'} | {'fusion_score':round(passage['fusion_score'],7), 'verified_against_index':True})
+        verified = [{k: v for k, v in passage.items() if k != 'score'}
+                    | {'fusion_score': round(passage['fusion_score'], 7),
+                       'verified_against_index': True}
+                    for passage in selected]
         coverage={}
         for p in verified:
             coverage.setdefault(p['book_id'],{'title':p['title'],'pages':set(),'passages':0})
