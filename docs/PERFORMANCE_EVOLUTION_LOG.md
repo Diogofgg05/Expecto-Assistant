@@ -159,3 +159,35 @@ Relatórios anteriores comparavam nome do modelo e nome genérico da plataforma 
 1. Validar o CI completo e as execuções do benchmark no hardware alvo.
 2. Identificar também as opções exatas de inferência/versão do Ollama, além do digest, para comparações mais rigorosas.
 3. Comparar 20+ execuções reais com o mesmo modelo e avaliar a qualidade das respostas, não apenas latência.
+
+## 2026-10-29 — Etapa 12: laboratório A/B de contexto Ollama (candidata)
+
+### Diagnóstico
+O benchmark anterior media tempos mas não testava duas configurações de inferência com sondas determinísticas e controlo de regressões de correção. Não existe ainda medição real no hardware alvo que justifique alterar os parâmetros de produção.
+
+### Implementação
+- Novo `aura/ollama_tuning_lab.py` com interface CLI explícita para comparar `num_ctx` de referência (8192) e candidato (4096), sem mudar definições da aplicação.
+- Emparelha as medições com a mesma pergunta e alterna a ordem dos candidatos para reduzir enviesamento de aquecimento.
+- Usa o identificador de modelo/hardware existente em `benchmark_identity` e a função de percentis existente em `ollama_benchmark`; não duplica estas funcionalidades.
+- Valida uma pequena bateria fixa de três operações aritméticas, captura p50/p95 e tokens/s e distingue `candidate_for_review`, `reject` e `inconclusive`.
+- Exige 10–100 medições, limite de 1024–8192 tokens de contexto, saída JSON opcional; só usa HTTP loopback sem redirecionamentos.
+- Novo `tests/test_ollama_tuning_lab.py` com cinco testes locais.
+
+### Validação observada nesta sessão
+- Testes isolados com transporte HTTP simulado: **5 passed, 0 failed, 0,11 s**, execução Python/pytest local.
+- `compileall` do novo módulo e testes: passou.
+- Ollama real não disponível neste ambiente (`127.0.0.1:11434` recusou ligação), logo **não há ganho em ms do Qwen3 comprovado**.
+- O ambiente de testes contém stubs apenas para as dependências de importação; a suíte completa da aplicação não foi executada.
+
+### Decisão
+**Candidata, pendente de revisão.** O laboratório é opt-in, sem alteração de parâmetros em produção. Os testes aritméticos são smoke-tests e não garantem qualidade de raciocínio, recuperação documental ou segurança.
+
+### Como reproduzir no computador com Ollama
+```bash
+python -m aura.ollama_tuning_lab --model qwen3 --baseline-ctx 8192 --candidate-ctx 4096 --runs 20 --warmup 2 --output tuning.json
+```
+
+### Próximas prioridades
+1. Executar no hardware-alvo, com a suíte completa e benchmark comparável.
+2. Expandir testes de qualidade de resposta para matemática, código, RAG e fontes contraditórias.
+3. Registar opções completas de inferência, versão Ollama, consumo de RAM e carga térmica para comparações mais rigorosas.
