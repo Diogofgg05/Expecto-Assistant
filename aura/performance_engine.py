@@ -65,8 +65,24 @@ class PerformanceEngine:
         normalized = _fold(question.strip())
         if _CONTEXT.search(normalized):
             return Route(True, "contextual_question")
-        if not _GENERAL.fullmatch(normalized):
+        match = _GENERAL.fullmatch(normalized)
+        if not match:
             return Route(True, "unclassified_question")
+        # Multi-part requests require the memory/research path, even if the
+        # opening resembles a definition. The "e" in "o que e" is excluded
+        # by inspecting only the subject captured after the introductory verb.
+        topic = normalized
+        for opener in ("o que e ", "o que sao ", "define ",
+                       "explica o que e ", "explica o conceito de ",
+                       "qual e a definicao de ", "qual a definicao de ",
+                       "qual e o significado de ", "qual o significado de "):
+            if topic.startswith(opener):
+                topic = topic[len(opener):]
+                break
+        if re.search(r"\\b(?:e|mas|porque|como|quando|onde|devo|posso|"
+                     r"quero|preciso|mim|comigo|ti|contigo|me|nos|"
+                     r"fazer|escolher)\\b", topic):
+            return Route(True, "multi_part_question")
         return Route(False, "general_definition")
 
     def record(self, *, route: Route, prepare_ms: float,
