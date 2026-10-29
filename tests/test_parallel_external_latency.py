@@ -55,3 +55,24 @@ def test_failed_external_lookup_preserves_other_results():
     assert len(result["evidence"]) == 1
     assert result["evidence"][0]["title"] == "second"
     assert any("TimeoutError" in value for value in result["limitations"])
+
+class SlowResearch:
+    def __init__(self, external):
+        self.external = external
+        self.overlapped = False
+
+    async def investigate(self, *args, **kwargs):
+        await asyncio.sleep(0.01)
+        self.overlapped = self.external.active > 0
+        await asyncio.sleep(0.02)
+        return {"evidence": []}
+
+
+def test_book_retrieval_overlaps_web_requests():
+    external = StubExternal()
+    research = SlowResearch(external)
+    result = asyncio.run(ReasoningOrchestrator(
+        None, StubModel(), external=external, research=research
+    ).run("research query"))
+    assert research.overlapped, "Web calls must start before book retrieval finishes"
+    assert len(result["evidence"]) == 2
