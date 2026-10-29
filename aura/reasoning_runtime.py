@@ -189,6 +189,20 @@ class ReasoningRuntime:
         unsafe_math = before["status"] in {
             "incorrect_arithmetic", "unverifiable_arithmetic", "not_checked"
         }
+        # In the opt-in fast path, expressions outside the narrow verified
+        # arithmetic grammar must not be mistaken for math-free prose.
+        # Leave year ranges and dates alone; require an arithmetic operator
+        # or equals sign between numbers (or a spaced subtraction).
+        if (self.review_mode == "fast" and
+                before["status"] == "no_explicit_arithmetic" and
+                (re.search(r"\d+\s*[+*/^=]\s*\d+", answer) or
+                 re.search(r"\d+\s+-\s+\d+", answer))):
+            self._arithmetic_rejections += 1
+            return ReviewOutcome(
+                answer="Não consegui verificar automaticamente esta expressão. "
+                       "Pede uma resolução exata ou divide os cálculos em etapas.",
+                status="abstained_unchecked_arithmetic",
+                limitations=("Expressão aritmética fora da gramática exata.",))
         if self.review_mode == "fast" and not unsafe_math:
             # No second Ollama call for a mechanically safe draft.
             # This is a speed/quality trade-off, NOT a factual verifier.
