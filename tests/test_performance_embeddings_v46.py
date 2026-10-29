@@ -157,3 +157,34 @@ def test_application_shutdown_closes_activated_memory(tmp_path, monkeypatch):
 
     assert len(observed) == 1
     assert observed[0].transport_status()["active"] is False
+
+
+def test_keepalive_can_be_disabled_if_server_transport_regresses(monkeypatch,tmp_path):
+    created = []
+
+    class PerCallClient:
+        def __init__(self, **kwargs):
+            created.append(self)
+            self.kwargs = kwargs
+            self.closed = False
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            self.closed = True
+        async def post(self, url, *, json):
+            return httpx.Response(
+                200, json={"embeddings": [[0., 1.]]},
+                request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("aura.memory.httpx.AsyncClient", PerCallClient)
+    memory = MemoryEngine(Settings(
+        data_dir=tmp_path, embedding_model="local",
+        embedding_keepalive=False), object())
+    async def run():
+        for _ in range(4):
+            assert await memory._embed("pergunta local") == [0., 1.]
+        assert len(created) == 4
+        assert all(x.closed for x in created)
+        assert memory.transport_status()["created"] == 0
+        await memory.close()
+    asyncio.run(run())
