@@ -63,3 +63,16 @@ Pendente: executar suíte CI e benchmark com Ollama real antes de ajustar o limi
 
 ### Próximo passo
 Testar contra Ollama instalado e medir várias execuções após aquecimento (p50/p95/p99). Adicionar streaming instrumentado mantendo as respostas JSON verificadas.
+
+## 2026-10-29 — Etapa 6: streaming JSON com TTFT (proposta)
+
+- Criado `aura/ollama_stream_metrics.py` para reunir fragmentos NDJSON de `/api/chat` com `stream=True`, medir `ttft_ms` (primeiro conteúdo observado) e `elapsed_ms`.
+- Adicionado método opcional `OllamaMultiLayerAdapter.stream_json(prompt)`; o método padrão `__call__` mantém `stream=False` e a lógica anterior.
+- Valida JSON apenas após evento terminal, nunca devolve propostas parciais nem ignora os controlos de evidências.
+- O leitor limita a 250000 caracteres, recusa eventos malformados e streams sem evento terminal; usa o HTTP client existente quando disponível.
+- Testes com HTTP mock adicionados para fragmentação, JSON incompleto e falta de conclusão.
+- Atenção: `ttft_ms` mede o primeiro fragmento de conteúdo recebido no cliente, não necessariamente o primeiro token gerado pelo modelo no servidor.
+- Sem benchmark de latência com Ollama real e sem validação da suíte completa. A melhoria é observabilidade e suporte opcional a streaming, não ganho em ms confirmado.
+
+### Próxima evolução
+Integrar streaming final na interface sem publicar JSON parcial ou respostas sem verificação, e comparar p50/p95/p99 entre modos em hardware alvo.
