@@ -51,3 +51,15 @@ Consultar primeiro a `main` atual e os PRs abertos, especialmente PR #10. Fazer 
 - Preservados keep-alive, RAG/web concorrentes e verificações de fontes.
 
 Pendente: executar suíte CI e benchmark com Ollama real antes de ajustar o limite de 192 tokens.
+
+## 2026-10-29 — Etapa 5: Ollama inference telemetry (proposta)
+
+- `OllamaMultiLayerAdapter.last_metrics` contém os dados da chamada mais recente: `elapsed_ms` (medido no cliente), `total_ms`, `load_ms`, `prompt_eval_ms`, `generation_ms`, `generated_tokens` e `tokens_per_second`.
+- As durações da resposta Ollama são convertidas de nanossegundos para milissegundos; dados ausentes/inválidos aparecem como `None`. Não são guardados prompts ou respostas em telemetria.
+- `ttft_ms=None` intencionalmente: o adaptador atual usa `stream=False`, portanto não mede o primeiro token.
+- Teste adicionado com dados sintéticos para conferir conversões e throughput.
+- **Não foi executado benchmark de inferência real nem a suíte de testes**. Instrumentação não implica melhoria de velocidade por si só.
+- Preservados orçamentos distintos para planeamento e resposta, reutilização HTTP e sobreposição RAG/web.
+
+### Próximo passo
+Testar contra Ollama instalado e medir várias execuções após aquecimento (p50/p95/p99). Adicionar streaming instrumentado mantendo as respostas JSON verificadas.
