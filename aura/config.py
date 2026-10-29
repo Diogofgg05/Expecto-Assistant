@@ -39,7 +39,7 @@ class Settings:
     performance_num_ctx: int = 3072  # used in legacy only
     performance_num_batch: int = 64  # used in legacy only
     performance_adaptive_memory: bool = False  # opt-in pressure tuning
-    reasoning_review_mode: str = 'balanced'  # off | balanced | deep
+    reasoning_review_mode: str = 'balanced'  # off | balanced | deep | fast
     searxng_url: str = ''
     research_interval_hours: int = 24
     voice_output: bool = True
