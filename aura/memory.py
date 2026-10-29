@@ -20,9 +20,11 @@ def cosine(left: list[float], right: list[float], *,
     """Cosine similarity; a precomputed query norm avoids repeated work."""
     if len(left) != len(right) or not left:
         return 0.0
-    total = sum(a * b for a, b in zip(left, right))
-    lnorm = left_norm if left_norm is not None else math.sqrt(sum(a*a for a in left))
-    denom = lnorm * math.sqrt(sum(b*b for b in right))
+    # math.sumprod (Python 3.12+) runs the hot vector arithmetic in C,
+    # avoiding thousands of Python generator-loop iterations per query.
+    total = math.sumprod(left, right)
+    lnorm = left_norm if left_norm is not None else math.sqrt(math.sumprod(left, left))
+    denom = lnorm * math.sqrt(math.sumprod(right, right))
     return total / denom if denom else 0.0
 
 
