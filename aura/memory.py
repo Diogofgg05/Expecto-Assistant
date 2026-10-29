@@ -11,6 +11,7 @@ import heapq
 import httpx
 from .config import Settings
 from .database import Database
+from .http_pool import LocalInferencePool
 
 _UNSET = object()  # distinguishes absent vector from a failed/empty embedding
 
@@ -32,20 +33,36 @@ class MemoryEngine:
     def __init__(self, settings: Settings, db: Database):
         self.settings, self.db = settings, db
         self.model = settings.embedding_model.strip()
+        # A bounded, lazy keep-alive transport owned by this memory chiplet.
+        # The inference transport is independent and cannot be blocked by
+        # indexing traffic; no text or embeddings are retained in the pool.
+        self._embed_pool = LocalInferencePool(max_connections=2)
+
+    async def close(self) -> None:
+        """Close embedding sockets when the application's lifespan ends."""
+        await self._embed_pool.aclose()
+
+    def transport_status(self) -> dict:
+        """Counts only; never includes prompts, notes or model responses."""
+        return self._embed_pool.status()
 
     async def _embed(self, text: str) -> list[float] | None:
         if not self.model:
             return None
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=2)) as client:
-                response = await client.post(self.settings.ollama_url + '/api/embed',
-                        json={'model': self.model, 'input': text[:2000]})
-                response.raise_for_status()
-                vectors = response.json().get('embeddings', [])
-                if vectors and isinstance(vectors[0], list):
-                    v = vectors[0]
-                    if 1 <= len(v) <= 8192 and all(isinstance(x,(int,float)) and math.isfinite(x) for x in v):
-                        return [float(x) for x in v]
+            client = await self._embed_pool.client()
+            response = await client.post(
+                self.settings.ollama_url + '/api/embed',
+                json={'model': self.model, 'input': text[:2000]},
+                timeout=httpx.Timeout(8.0, connect=2.0),
+            )
+            response.raise_for_status()
+            vectors = response.json().get('embeddings', [])
+            if vectors and isinstance(vectors[0], list):
+                v = vectors[0]
+                if 1 <= len(v) <= 8192 and all(
+                        isinstance(x, (int, float)) and math.isfinite(x) for x in v):
+                    return [float(x) for x in v]
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             pass  # Lexical recall remains fully functional.
         return None
@@ -161,12 +178,15 @@ class MemoryEngine:
             return {'indexed':0,'pending':0,'reason':''}
         # One Ollama request for a batch is substantially cheaper than N calls.
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=2.0)) as client:
-                r=await client.post(self.settings.ollama_url+'/api/embed',json={
-                    'model':self.model,'input':[item['content'][:2000] for item in pending]
-                })
-                r.raise_for_status()
-                vectors=r.json().get('embeddings',[])
+            client = await self._embed_pool.client()
+            r = await client.post(
+                self.settings.ollama_url + '/api/embed',
+                json={'model': self.model,
+                      'input': [item['content'][:2000] for item in pending]},
+                timeout=httpx.Timeout(30.0, connect=2.0),
+            )
+            r.raise_for_status()
+            vectors = r.json().get('embeddings', [])
             if not isinstance(vectors,list) or len(vectors)!=len(pending):
                 raise ValueError('Embedding batch incompleto')
             for item,vector in zip(pending,vectors):
