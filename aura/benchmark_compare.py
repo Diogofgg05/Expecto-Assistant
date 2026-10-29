@@ -12,56 +12,56 @@ from pathlib import Path
 METRICS = ("elapsed_ms", "total_ms", "generation_ms", "tokens_per_second")
 
 
-def _finite_positive(value):
-    return type(value) in (int, float) and math.isfinite(value) and value > 0
+def percentile(values, pct):
+    values = sorted(values)
+    position = (len(values) - 1) * pct / 100
+    lo = int(position)
+    hi = min(lo + 1, len(values) - 1)
+    return round(values[lo] + (values[hi] - values[lo]) * (position - lo), 3)
+
+
+def _extract(report, metric):
+    values = [row.get(metric) for row in report['samples']]
+    if any(type(x) not in (int, float) or not math.isfinite(x) or x <= 0 for x in values):
+        return None
+    return {'p50': percentile(values, 50), 'p95': percentile(values, 95)}
 
 
 def compare(baseline, candidate, *, max_regression_pct=5.0):
-    """Fail closed when reports lack comparable metadata or enough samples."""
-    if not 0 <= max_regression_pct <= 100:
-        raise ValueError("Invalid regression threshold")
-    fields = ("model", "url", "streaming", "python", "platform")
-    for field in fields:
-        if field not in baseline or baseline.get(field) != candidate.get(field):
-            return {"decision": "inconclusive", "reason": "missing or different " + field}
+    """Recalculate percentiles from observed samples, never trust cached summaries."""
+    if type(max_regression_pct) not in (int, float) or not math.isfinite(max_regression_pct) or not 0 <= max_regression_pct <= 100:
+        raise ValueError('Invalid regression threshold')
+    if not isinstance(baseline, dict) or not isinstance(candidate, dict):
+        return {'decision': 'inconclusive', 'reason': 'invalid reports'}
+    for field in ('model', 'url', 'streaming', 'python', 'platform'):
+        if field not in baseline or field not in candidate or baseline[field] != candidate[field]:
+            return {'decision': 'inconclusive', 'reason': 'missing or different ' + field}
     for report in (baseline, candidate):
-        runs = report.get("runs")
-        samples = report.get("samples")
-        if type(runs) is not int or runs < 10 or not isinstance(samples, list) or len(samples) != runs:
-            return {"decision": "inconclusive", "reason": "at least 10 complete runs required"}
-        if not isinstance(report.get("summary"), dict):
-            return {"decision": "inconclusive", "reason": "missing summary"}
+        runs, samples = report.get('runs'), report.get('samples')
+        if type(runs) is not int or runs < 10 or not isinstance(samples, list) or len(samples) != runs or any(not isinstance(row, dict) for row in samples):
+            return {'decision': 'inconclusive', 'reason': 'at least 10 valid run samples required'}
     metrics = {}
-    for metric in METRICS:
-        before = baseline["summary"].get(metric, {})
-        after = candidate["summary"].get(metric, {})
-        if not isinstance(before, dict) or not isinstance(after, dict):
+    for key in METRICS:
+        before, after = _extract(baseline, key), _extract(candidate, key)
+        if before is None or after is None:
             continue
-        p50a, p50b = before.get("p50"), after.get("p50")
-        p95a, p95b = before.get("p95"), after.get("p95")
-        if not all(_finite_positive(v) for v in (p50a, p50b, p95a, p95b)):
-            continue
-        if before.get("samples") != baseline["runs"] or after.get("samples") != candidate["runs"]:
-            continue
-        direction = 1 if metric == "tokens_per_second" else -1
-        change = round(100 * (p95b / p95a - 1), 3)
-        regression = (-direction * change) > max_regression_pct
-        metrics[metric] = {"before_p50": p50a, "after_p50": p50b,
-                           "before_p95": p95a, "after_p95": p95b,
-                           "p95_change_pct": change, "regression": regression}
-    if "elapsed_ms" not in metrics:
-        return {"decision": "inconclusive", "reason": "missing valid elapsed_ms samples",
-                "metrics": metrics}
-    if any(item["regression"] for item in metrics.values()):
-        decision = "reject"
-    elif metrics["elapsed_ms"]["after_p50"] < metrics["elapsed_ms"]["before_p50"] and metrics["elapsed_ms"]["after_p95"] < metrics["elapsed_ms"]["before_p95"]:
-        decision = "candidate_for_review"
+        change = round(100 * (after['p95'] / before['p95'] - 1), 3)
+        regression = change < -max_regression_pct if key == 'tokens_per_second' else change > max_regression_pct
+        metrics[key] = {'before_p50': before['p50'], 'after_p50': after['p50'],
+                        'before_p95': before['p95'], 'after_p95': after['p95'],
+                        'p95_change_pct': change, 'regression': regression}
+    if 'elapsed_ms' not in metrics:
+        return {'decision': 'inconclusive', 'reason': 'missing valid elapsed_ms samples', 'metrics': metrics}
+    if any(m['regression'] for m in metrics.values()):
+        decision = 'reject'
+    elif metrics['elapsed_ms']['after_p50'] < metrics['elapsed_ms']['before_p50'] and metrics['elapsed_ms']['after_p95'] < metrics['elapsed_ms']['before_p95']:
+        decision = 'candidate_for_review'
     else:
-        decision = "inconclusive"
-    return {"decision": decision, "metrics": metrics,
-            "limitations": ["No quality or correctness comparison",
-                            "Hardware load and model version must be controlled externally",
-                            "Approval and merge require human review"]}
+        decision = 'inconclusive'
+    return {'decision': decision, 'metrics': metrics, 'limitations': [
+        'Measured samples are recalculated; cached summary fields are not trusted',
+        'Quality, model digest and concurrent hardware load not verified',
+        'Human approval is required before merging']}
 
 
 def main():
