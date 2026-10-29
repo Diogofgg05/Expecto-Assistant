@@ -244,22 +244,20 @@ class Ollama:
                 }
                 if plan.keep_alive is not None:
                     payload['keep_alive'] = plan.keep_alive
-                if self.performance.profile == 'legacy':
+                if self.performance.profile == 'legacy' and not route.use_context:
+                    # A smaller context is allowed ONLY for an unambiguous
+                    # standalone definition. Preserve the original inference
+                    # options for all personal, multi-part or complex requests.
                     payload['options'] = {
                         **plan.options,
                         'num_ctx': self.settings.performance_num_ctx,
                         'num_batch': min(self.settings.performance_num_batch,
                                          self.settings.performance_num_ctx),
+                        'num_predict': min(plan.options['num_predict'], 220),
                     }
-                    if not route.use_context:
-                        payload['options']['num_predict'] = min(
-                            plan.options['num_predict'], 220)
-                        # Only standalone, context-free Legacy questions can
-                        # be downscaled. Complex/personal questions never
-                        # probe host RAM or lose their inference budget.
-                        if self.resource_guard.enabled:
-                            payload['options'] = self.resource_guard.tune_quick(
-                                payload['options'])
+                    if self.resource_guard.enabled:
+                        payload['options'] = self.resource_guard.tune_quick(
+                            payload['options'])
                 if on_token is not None:
                     payload['stream'] = True
                     chunks = []
