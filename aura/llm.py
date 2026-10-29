@@ -168,15 +168,8 @@ class Ollama:
                 error=failed,
             )
 
-    async def _personal_context(self, question: str):
-        if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
-            notes, episodes = await self.memory.recall_pair(
-                question, months=self.settings.episodic_lookback_months,
-                notes_limit=8, episodes_limit=5)
-        else:
-            notes = await self.memory.recall(question, 8)
-            episodes = await self.memory.recall_episodes(
-                question, self.settings.episodic_lookback_months, 5)
+    def _local_context_parts(self, question: str):
+        """Independent read-only SQLite lookups, safe to run in a worker thread."""
         # Never include unbounded external data in the prompt.
         knowledge = self.db.documents(query=question, limit=4)
         from .learning import LearningEngine
@@ -193,6 +186,34 @@ class Ollama:
         linked = RelationMemory(self.db).search_related(question,limit=8,months=self.settings.episodic_lookback_months)
         from .consolidation import ConsolidationEngine
         summary_items = ConsolidationEngine(self.db).summaries(question,limit=2)
+        from .living_intelligence import ContinuityEngine
+        from .reflection import ReflectionEngine
+        continuity_context = ContinuityEngine(self.db).context()
+        reflection_context = ReflectionEngine(self.db).approved_context()
+        return (
+            knowledge, learned_claims, temporal, linked, summary_items,
+            continuity_context, reflection_context,
+        )
+
+    async def _personal_context(self, question: str):
+        # Queries and embedding requests are independent. Their overlap
+        # shortens preparation time without dropping any private context.
+        local_task = asyncio.create_task(
+            asyncio.to_thread(self._local_context_parts, question))
+        try:
+        if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
+            notes, episodes = await self.memory.recall_pair(
+                question, months=self.settings.episodic_lookback_months,
+                notes_limit=8, episodes_limit=5)
+        else:
+            notes = await self.memory.recall(question, 8)
+            episodes = await self.memory.recall_episodes(
+                question, self.settings.episodic_lookback_months, 5)
+            (knowledge, learned_claims, temporal, linked, summary_items,
+             continuity_context, reflection_context) = await local_task
+        finally:
+            if not local_task.done():
+                local_task.cancel()
         context = ('ESTRUTURAS CONSOLIDADAS (excertos, não factos verificados):\n' +
                    '\n'.join(x['content'][:1000] for x in summary_items) + '\n\n' +'ESTADO ATUAL REGISTADO (declarações do utilizador, não factos verificados):\n' +
                    '\n'.join(f"- {DISPLAY.get(t['subject'], t['subject'])}: {t['value']} (registado em {t['valid_from'][:10]})" for t in temporal) +
@@ -209,10 +230,6 @@ class Ollama:
                    '\n\nFontes recolhidas (não verificadas independentemente):\n' +
                    '\n'.join(f"- {x['title']}: {x['content'][:350]} [URL: {x['url']}; {x['evidence_level']}]"
                              for x in knowledge))
-        from .living_intelligence import ContinuityEngine
-        from .reflection import ReflectionEngine
-        continuity_context = ContinuityEngine(self.db).context()
-        reflection_context = ReflectionEngine(self.db).approved_context()
         return context, continuity_context, reflection_context
 
     async def _reply_impl(self, question: str, history: list[dict] | None = None, *,
