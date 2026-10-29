@@ -85,3 +85,13 @@ Integrar streaming final na interface sem publicar JSON parcial ou respostas sem
 - Dois testes de regressão acrescentados para conversão de tempos e eventos de erro.
 - Não foi executado benchmark real nem a suíte completa nesta sessão. Nenhuma redução de latência é alegada nesta etapa.
 - Próximo passo: instrumentar a interface e executar comparação real de p50/p95/p99 em hardware alvo.
+
+## 2026-10-29 — Etapa 8: laboratório de benchmark real (proposta)
+
+- Novo comando `python -m aura.ollama_benchmark --model NOME --runs 20 --warmup 2`; adicionar `--stream` para comparar o modo streaming.
+- Mede `elapsed_ms`, `ttft_ms` quando disponível, durações reportadas por Ollama, e tokens/s. Exportação JSON opcional com `--output results.json`.
+- Calcula p50/p95/p99 por interpolação a partir de amostras observadas, distinguindo ausência de dados de zeros.
+- Executa ciclos de warmup fora das medições; não grava prompts nem respostas.
+- Testes unitários adicionados para percentis, ausência de TTFT e exclusão de warmups.
+- **Não foi executado no Ollama real nesta sessão**; CI e consumo RAM/CPU continuam pendentes. O benchmark não implica aceleração por si só.
+- Próxima etapa: rodar no hardware alvo com o mesmo modelo e condições, comparar logs antes/depois e verificar eventuais regressões.
