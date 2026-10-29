@@ -36,3 +36,11 @@ jobs:
           name: performance-4-4-ab
           path: benchmark_results_v44.json
           if-no-files-found: error
+      - name: Processing 4.4 vs 4.5 pinned A/B benchmark (synthetic I/O)
+        run: python scripts/benchmark_processing_v45.py --runs 24 --warmup 4 --output benchmark_results_v45.json
+      - name: Upload performance 4.5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-4-5-ab
+          path: benchmark_results_v45.json
+          if-no-files-found: error
