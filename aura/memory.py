@@ -6,9 +6,12 @@ for writing/deleting notes. Raw user text never goes to public web search.
 from __future__ import annotations
 import json
 import math
+import asyncio
 import httpx
 from .config import Settings
 from .database import Database
+
+_UNSET = object()  # distinguishes absent vector from a failed/empty embedding
 
 
 def cosine(left: list[float], right: list[float]) -> float:
@@ -72,7 +75,23 @@ class MemoryEngine:
                 'pending': len(self.db.pending_embeddings(self.model, 10000)),
                 'reason': '' if indexed or not pending else 'Ollama ou modelo de embedding indisponível.'}
 
-    async def recall(self, question: str, limit: int = 7) -> list[dict]:
+    async def recall_pair(self, question: str, months: int = 6,
+                          notes_limit: int = 8, episodes_limit: int = 5):
+        """Share one transient query embedding across two retrieval paths.
+
+        No embedding or query is cached persistently. Existing direct recall
+        methods retain their behaviour. A failed embed falls back to lexical
+        retrieval for both collections, avoiding duplicate network failures.
+        """
+        vector = await self._embed(question[:2000]) if self.model else None
+        return await asyncio.gather(
+            self.recall(question, notes_limit, query_vector=vector),
+            self.recall_episodes(question, months, episodes_limit,
+                                 query_vector=vector),
+        )
+
+    async def recall(self, question: str, limit: int = 7, *,
+                     query_vector=_UNSET) -> list[dict]:
         limit = max(1, min(limit, 20))
         lexical = self.db.search_memories(question, limit=max(8, limit * 3))
         scores: dict[str, float] = {}
@@ -83,11 +102,11 @@ class MemoryEngine:
         if self.model:
             stored = self.db.vectors(self.model, 2500)
             if stored:
-                query_vector = await self._embed(question)
-                if query_vector:
+                vector = await self._embed(question) if query_vector is _UNSET else query_vector
+                if vector:
                     for entry in stored:
                         try:
-                            score = cosine(query_vector, json.loads(entry['vector_json']))
+                            score = cosine(vector, json.loads(entry['vector_json']))
                         except (ValueError, TypeError):
                             continue
                         if score >= 0.39:
@@ -119,7 +138,8 @@ class MemoryEngine:
         except (httpx.HTTPError, ValueError, TypeError, KeyError):
             return {'indexed':0,'pending':len(pending),'reason':'Ollama ou embeddings indisponíveis.'}
 
-    async def recall_episodes(self, question: str, months: int = 6, limit: int = 8) -> list[dict]:
+    async def recall_episodes(self, question: str, months: int = 6, limit: int = 8, *,
+                              query_vector=_UNSET) -> list[dict]:
         """Hybrid retrieval of 6-month conversations: BM25 plus local cosine.
 
         Never sends text off-device. Old transcript records without embeddings
@@ -132,7 +152,8 @@ class MemoryEngine:
         if self.model:
             # The embed model is shared by indexing and querying; changing models
             # uses a separate index, avoiding mixed-dimensional comparisons.
-            query_vec=await self._embed(question[:2000])
+            query_vec=(await self._embed(question[:2000]) if query_vector is _UNSET
+                       else query_vector)
             if query_vec:
                 semantic=[]
                 for row in self.db.episode_vectors_in_window(self.model,months):
