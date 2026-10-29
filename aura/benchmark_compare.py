@@ -36,6 +36,28 @@ def compare(baseline, candidate, *, max_regression_pct=5.0):
     for field in ('model', 'url', 'streaming', 'python', 'platform'):
         if field not in baseline or field not in candidate or baseline[field] != candidate[field]:
             return {'decision': 'inconclusive', 'reason': 'missing or different ' + field}
+    # Benchmark v2: fail closed on legacy reports or mismatched model weights,
+    # prompt, CPU and RAM. Comparing only model tags is not reproducible.
+    import re
+    if baseline.get('schema_version') != 2 or candidate.get('schema_version') != 2:
+        return {'decision': 'inconclusive', 'reason': 'benchmark schema v2 required'}
+    for field in ('model_digest', 'workload_sha256'):
+        before, after = baseline.get(field), candidate.get(field)
+        if not (isinstance(before, str) and re.fullmatch('[0-9a-f]{64}', before)
+                and isinstance(after, str) and re.fullmatch('[0-9a-f]{64}', after)):
+            return {'decision': 'inconclusive', 'reason': 'missing or invalid ' + field}
+        if before != after:
+            return {'decision': 'inconclusive', 'reason': 'different ' + field}
+    hardware_keys = ('system', 'architecture', 'cpu_model', 'logical_cpus', 'physical_ram_bytes')
+    for report in (baseline, candidate):
+        h = report.get('hardware')
+        if (not isinstance(h, dict) or not all(isinstance(h.get(k), str) and h[k].strip()
+             for k in hardware_keys[:3]) or type(h.get('logical_cpus')) is not int
+                or h['logical_cpus'] <= 0 or type(h.get('physical_ram_bytes')) is not int
+                or h['physical_ram_bytes'] <= 0):
+            return {'decision': 'inconclusive', 'reason': 'missing or invalid hardware profile'}
+    if any(baseline['hardware'][k] != candidate['hardware'][k] for k in hardware_keys):
+        return {'decision': 'inconclusive', 'reason': 'different hardware profile'}
     for report in (baseline, candidate):
         runs, samples = report.get('runs'), report.get('samples')
         if type(runs) is not int or runs < 10 or not isinstance(samples, list) or len(samples) != runs or any(not isinstance(row, dict) for row in samples):
@@ -60,7 +82,7 @@ def compare(baseline, candidate, *, max_regression_pct=5.0):
         decision = 'inconclusive'
     return {'decision': decision, 'metrics': metrics, 'limitations': [
         'Measured samples are recalculated; cached summary fields are not trusted',
-        'Quality, model digest and concurrent hardware load not verified',
+        'Quality, hardware load and model runtime version not verified',
         'Human approval is required before merging']}
 
 
