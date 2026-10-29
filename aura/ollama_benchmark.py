@@ -8,11 +8,11 @@ import argparse
 import asyncio
 import json
 import platform
-import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .multilayer_reasoning import OllamaMultiLayerAdapter
+from .benchmark_identity import BENCHMARK_PROMPT, collect_identity
 
 
 def percentile(values, p):
@@ -41,10 +41,11 @@ def summarize(rows):
 async def benchmark(model, url, runs, warmup, streaming):
     if not 1 <= runs <= 200 or not 0 <= warmup <= 20:
         raise ValueError("Runs must be 1..200 and warmup 0..20")
+    identity = await collect_identity(url, model)
     rows = []
     async with OllamaMultiLayerAdapter(url, model) as adapter:
         for index in range(warmup + runs):
-            prompt = 'Responde em JSON: {"answer":"OK"}.'
+            prompt = BENCHMARK_PROMPT
             if streaming:
                 await adapter.stream_json(prompt)
             else:
@@ -52,7 +53,7 @@ async def benchmark(model, url, runs, warmup, streaming):
             if index >= warmup:
                 rows.append(dict(adapter.last_metrics))
     return {"model": model, "url": url, "streaming": streaming,
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            **identity, "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "python": platform.python_version(), "platform": platform.platform(),
             "runs": runs, "warmup": warmup, "summary": summarize(rows),
             "samples": rows}
