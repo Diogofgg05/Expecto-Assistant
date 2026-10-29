@@ -40,3 +40,14 @@ Consultar primeiro a `main` atual e os PRs abertos, especialmente PR #10. Fazer 
 - **Benchmark de latência Ollama real: ainda não executado**. O benefício depende de manter ligação TCP e não altera a velocidade de inferência do modelo.
 - Preservadas as otimizações de pesquisa concorrente das etapas anteriores.
 - Pendente: executar testes completos/CI e medir TTFT, p50/p95 e RAM com Ollama local real, antes de afirmar ganhos em milissegundos.
+
+## 2026-10-29 — Etapa 4: limite de geração separado para planeamento (proposta)
+
+- O adaptador Ollama expõe `plan(prompt)` com `num_predict=192`; as restantes chamadas mantêm `num_predict=950`.
+- O orquestrador usa `plan` quando disponível e preserva suporte para modelos que só implementam `__call__`.
+- Adicionado teste unitário com HTTP simulado que verifica os dois orçamentos.
+- Não há resultados end-to-end em milissegundos nem redução garantida: `num_predict` é teto de tokens, não quantidade obrigatoriamente gerada.
+- Risco: planos grandes podem ser truncados; acompanhar taxa de JSON inválido e fallback à pergunta original em modelos reais.
+- Preservados keep-alive, RAG/web concorrentes e verificações de fontes.
+
+Pendente: executar suíte CI e benchmark com Ollama real antes de ajustar o limite de 192 tokens.
