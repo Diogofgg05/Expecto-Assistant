@@ -22,7 +22,7 @@ def _fold(text: str) -> str:
 # Everything ambiguous, personal, time-dependent or conversational stays full.
 _GENERAL = re.compile(
     r"^(?:o que (?:e|sao)|define|explica (?:o que e|o conceito de)|"
-    r"qual (?:e|a) (?:definicao|significado) de)\s+"
+    r"qual (?:e )?(?:a )?(?:definicao|significado) de)\s+"
     r"(?:um |uma |o |a |os |as )?"
     r"[\w\s-]{3,100}[?.!]*$", re.I,
 )
