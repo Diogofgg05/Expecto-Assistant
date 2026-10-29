@@ -1,0 +1,54 @@
+name: Expecto chiplets and regressions
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for the pinned 4.3 A/B baseline
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install offline-test dependencies
+        run: >-
+          python -m pip install
+          'fastapi>=0.115,<1.0' 'httpx>=0.27,<1.0'
+          'pydantic>=2.7,<3.0' 'cryptography>=43,<47'
+          'PyMuPDF>=1.24,<2' 'pytest>=8,<10'
+      - name: Chiplet and existing engine/API regressions
+        run: python -m pytest -q tests/test_chiplets_v60.py tests/test_engine.py tests/test_api.py
+      - name: Full offline regression suite
+        run: python -m pytest -q tests
+      - name: Hologram animation syntax and frame-budget tests
+        run: node --check web/orb.js && node --check web/app.js && node --check web/math.js && node --test tests/orb_frame_budget.test.cjs tests/math_render.test.cjs
+      - name: Isolated cold-start proxy (not prior-commit A/B)
+        run: python scripts/benchmark_chiplets.py --runs 3
+      - name: Reproducible performance 4.3 vs 4.4 A/B (offline)
+        run: python scripts/benchmark_processing_v44.py --iterations 220 --warmup 20 --output benchmark_results_v44.json
+      - name: Upload benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-4-4-ab
+          path: benchmark_results_v44.json
+          if-no-files-found: error
+      - name: Processing 4.4 vs 4.5 pinned A/B benchmark (synthetic I/O)
+        run: python scripts/benchmark_processing_v45.py --runs 24 --warmup 4 --output benchmark_results_v45.json
+      - name: Upload performance 4.5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-4-5-ab
+          path: benchmark_results_v45.json
+          if-no-files-found: error
+      - name: Embedding transport 4.5 vs 4.6 HTTP benchmark (mock Ollama)
+        run: python scripts/benchmark_embedding_transport_v46.py --runs 30 --warmup 4 --output benchmark_results_v46.json
+      - name: Upload performance 4.6 benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-4-6-ab
+          path: benchmark_results_v46.json
+          if-no-files-found: error

@@ -59,7 +59,8 @@ def test_index_batch_real_ollama_format_and_durable_reopen(tmp_path,monkeypatch)
         def __init__(self,**kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self,*args): pass
-        async def post(self,url,json):
+        async def post(self,url,json,**kwargs):
+            assert kwargs['timeout'].read == 30.0
             seen.append(json)
             return FakeResult()
     monkeypatch.setattr('aura.memory.httpx.AsyncClient',FakeClient)

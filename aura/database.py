@@ -35,6 +35,10 @@ class Database:
             raise VaultLockedError("A base parece cifrada. Abre-a com a frase-passe SQLCipher.")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
+            # SQLite persists WAL mode in the database header. Set it once at
+            # startup rather than renegotiating journal mode on every read.
+            # This also avoids an unnecessary write-oriented pragma on FTS.
+            db.execute('PRAGMA journal_mode=WAL')
             db.executescript('''
             CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY, content TEXT NOT NULL,
@@ -102,7 +106,7 @@ class Database:
         try:
             db.execute('PRAGMA busy_timeout=10000')
             db.execute('PRAGMA foreign_keys=ON')
-            db.execute('PRAGMA journal_mode=WAL')
+            # WAL is initialised once in __init__ and remains persistent.
             yield db
             db.commit()
         except Exception:
