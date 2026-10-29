@@ -153,21 +153,35 @@ class ReasoningOrchestrator:
             meta['limitations'].append('Não foi possível pesquisar os livros: ' + type(ex).__name__)
 
         if self.external and self.config.max_web_evidence:
-            for query in queries[:2]:
-                try:
-                    raw = await self.external.search(query, limit=self.config.max_web_evidence)
-                    for item in raw:
-                        candidate = _web_evidence(item)
-                        if candidate and candidate['id'] not in {e['id'] for e in evidence}:
-                            evidence.append(candidate)
-                        if sum(e['kind'] == 'web_snippet' for e in evidence) >= self.config.max_web_evidence:
-                            break
-                except (ValueError, TypeError, OSError, TimeoutError) as ex:
-                    meta['limitations'].append('Pesquisa externa indisponível: ' + type(ex).__name__)
-                except Exception as ex:
-                    # httpx errors are optional dependency exceptions; fail closed.
-                    meta['limitations'].append('Pesquisa externa falhou: ' + type(ex).__name__)
-                if sum(e['kind'] == 'web_snippet' for e in evidence) >= self.config.max_web_evidence:
+            # Independent lookups overlap network wait; process results in original
+            # query order to keep evidence selection deterministic.
+            import asyncio
+            batches = await asyncio.gather(
+                *(self.external.search(query, limit=self.config.max_web_evidence)
+                  for query in queries[:2]),
+                return_exceptions=True,
+            )
+            seen_ids = {item['id'] for item in evidence}
+            web_count = 0
+            for raw in batches:
+                if isinstance(raw, BaseException):
+                    if isinstance(raw, (ValueError, TypeError, OSError, TimeoutError)):
+                        meta['limitations'].append('Pesquisa externa indisponível: ' + type(raw).__name__)
+                    else:
+                        meta['limitations'].append('Pesquisa externa falhou: ' + type(raw).__name__)
+                    continue
+                if not isinstance(raw, list):
+                    meta['limitations'].append('Pesquisa externa indisponível: ValueError')
+                    continue
+                for item in raw:
+                    candidate = _web_evidence(item)
+                    if candidate and candidate['id'] not in seen_ids:
+                        evidence.append(candidate)
+                        seen_ids.add(candidate['id'])
+                        web_count += 1
+                    if web_count >= self.config.max_web_evidence:
+                        break
+                if web_count >= self.config.max_web_evidence:
                     break
         meta['evidence'] = evidence
         if not evidence:
