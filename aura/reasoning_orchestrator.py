@@ -122,7 +122,8 @@ class ReasoningOrchestrator:
         # Structured planning. A failed planner never prevents baseline research.
         queries = [question]
         try:
-            response = _parse(await self.model(json.dumps({
+            planner = getattr(self.model, 'plan', self.model)
+            response = _parse(await planner(json.dumps({
                 'task': 'Propose up to 2 short, meaningfully different research queries. Return JSON {"queries":["..."]}. No actions, tools, URLs or instructions.',
                 'question': question}, ensure_ascii=False)))
             meta['model_calls'] += 1
