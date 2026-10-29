@@ -134,3 +134,28 @@ Candidata pendente de validação CI, benchmark real em hardware alvo e revisão
 - Registar digest exato do modelo e identificação de hardware nos benchmarks.
 - Comparar os mesmos prompts sob carga controlada, com avaliação da qualidade das respostas.
 - Executar a suíte completa e validar o CI da PR.
+
+## 2026-10-29 — Etapa 11: identidade reprodutível de modelo e hardware (candidata)
+
+### Problema confirmado
+Relatórios anteriores comparavam nome do modelo e nome genérico da plataforma mas não conferiam o digest do modelo instalado, o modelo CPU, memória física ou identificação do prompt. Podiam classificar como ganho uma execução com pesos/hardware diferentes.
+
+### Alterações implementadas
+- `aura/benchmark_identity.py`: digest SHA-256 de `/api/tags` do Ollama, hash SHA-256 do prompt fixo, CPU, arquitetura, número lógico de núcleos e RAM física; sem hostname, número de série, prompts ou respostas no relatório.
+- `aura/ollama_benchmark.py`: acrescenta `schema_version=2` e identidade ao JSON. Se não for possível conhecer modelo/hardware, interrompe a medição em vez de produzir um benchmark sem identidade.
+- `aura/benchmark_compare.py`: rejeita comparação automática entre digests, workloads e hardware diferentes, ou relatórios antigos sem esquema v2.
+- `tests/test_benchmark_identity.py` (5 testes), `tests/test_benchmark_compare.py` (15 testes), `tests/test_ollama_benchmark.py` adaptado ao novo esquema. Não foram acrescentadas dependências.
+
+### Verificação executada nesta sessão
+- Verificação local isolada dos módulos `benchmark_identity` e `benchmark_compare` espelhados da branch: **20 testes aprovados, 0 falhas, 0,13 s** com pytest.
+- `compileall` nos dois módulos: aprovado.
+- 3000 comparações locais, após 250 warmups: **p50 0,02516 ms; p95 0,05825 ms; p99 0,18297 ms** neste ambiente. São tempos do comparador e não do Ollama nem do projeto completo; estes resultados não representam ganho de velocidade.
+- A suíte integral, os testes da CLI de benchmark no ambiente completo, CI remoto e o benchmark de Qwen3 real **não foram executados**.
+
+### Decisão e continuidade
+**Candidata para revisão, ainda não aprovada para integração.** Preservados os métodos de benchmark, streaming, limites, RAG e Keep-Alive já existentes. Relatórios v1 continuam legíveis como JSON mas são inconclusivos no comparador v2 por falta de identidade verificável.
+
+### Próximos objetivos
+1. Validar o CI completo e as execuções do benchmark no hardware alvo.
+2. Identificar também as opções exatas de inferência/versão do Ollama, além do digest, para comparações mais rigorosas.
+3. Comparar 20+ execuções reais com o mesmo modelo e avaliar a qualidade das respostas, não apenas latência.
