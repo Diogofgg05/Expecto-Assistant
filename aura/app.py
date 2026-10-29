@@ -230,7 +230,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get('/api/performance/status')
     async def performance_status():
         """Read-only, aggregate-only. Never requests Ollama or stores prompts."""
-        return engine.llm.performance.status()
+        return {
+            **engine.llm.performance.status(),
+            'resource_guard': engine.llm.resource_guard.status(),
+        }
 
     @app.get('/api/chiplets')
     async def chiplet_metrics():
