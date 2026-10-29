@@ -95,3 +95,16 @@ Integrar streaming final na interface sem publicar JSON parcial ou respostas sem
 - Testes unitários adicionados para percentis, ausência de TTFT e exclusão de warmups.
 - **Não foi executado no Ollama real nesta sessão**; CI e consumo RAM/CPU continuam pendentes. O benchmark não implica aceleração por si só.
 - Próxima etapa: rodar no hardware alvo com o mesmo modelo e condições, comparar logs antes/depois e verificar eventuais regressões.
+
+## 2026-10-29 — Etapa 9: política de regressões para benchmarks (candidata)
+
+- Novo módulo `aura/benchmark_compare.py`: compara dois JSON gerados pelo laboratório Ollama existente.
+- Exige coincidência de modelo, URL, modo streaming, versão Python e plataforma; requer pelo menos 10 medições por relatório e p50/p95 válidos.
+- Classifica `reject` se p95 piorar mais de 5% (latência) ou throughput cair mais de 5%; `candidate_for_review` se p50 e p95 da latência melhorarem e não houver regressões observadas; caso contrário, `inconclusive`.
+- Novo `tests/test_benchmark_compare.py` com sete casos unitários de política usando relatórios sintéticos.
+- Mantém todas as funcionalidades e dependências anteriores; não modifica inferência nem aprova mudanças automaticamente.
+- Limitações: não verifica qualidade de resposta, carga ou temperatura da máquina, nem versão do modelo Ollama. Requer revisão humana e resultados reais comparáveis.
+- **Validação de testes executada: pendente**; benchmarks reais antes/depois: ainda não recolhidos.
+
+Comando: `python -m aura.benchmark_compare before.json after.json`.
+Próximas prioridades: executar testes/CI, registar versão e hardware exatos em cada benchmark, medir custo de inferência no computador alvo.
