@@ -108,3 +108,29 @@ Integrar streaming final na interface sem publicar JSON parcial ou respostas sem
 
 Comando: `python -m aura.benchmark_compare before.json after.json`.
 Próximas prioridades: executar testes/CI, registar versão e hardware exatos em cada benchmark, medir custo de inferência no computador alvo.
+
+## 2026-10-29 — Etapa 10: benchmark compare fail-closed (implementada, candidata)
+
+### Diagnóstico
+O comparador anterior confiava nos campos p50/p95 dos JSON, sem recalcular a partir de `samples`. Um ficheiro com `summary` manipulado podia obter incorretamente `candidate_for_review`.
+
+### Alteração
+- `aura/benchmark_compare.py`: p50/p95 recalculados de amostras observadas; rejeita valores não finitos, negativos e zero.
+- Validação de metadados comparáveis e pelo menos 10 amostras para cada candidato mantida.
+- `tests/test_benchmark_compare.py`: substituídos testes antigos baseados em `samples=[{}]` por 10 casos coerentes com medições por amostra, incluindo `NaN` e resumo adulterado.
+- Sem novas dependências, sem migração e sem alteração do motor de inferência.
+
+### Verificação executada (ambiente isolado desta sessão, não CI)
+- `python -m pytest tests/test_benchmark_compare.py -q`: 10 testes aprovados, 0 falhas, 0,04 s.
+- Compilação via `python -m compileall`: passou.
+- Microbenchmark do custo do comparador, 2000 chamadas após aquecimento: p50 0,02158 ms; p95 0,02385 ms. Mede exclusivamente o comparador, não o Ollama/Expecto.
+- Casos demonstrativos com dados sintéticos: 100 -> 90 ms resulta em `candidate_for_review`; 100 -> 110 ms resulta em `reject`. Não são medições do modelo.
+- Servidor Ollama local neste ambiente: inacessível. Suíte total do Expecto: não executada.
+
+### Decisão
+Candidata pendente de validação CI, benchmark real em hardware alvo e revisão humana. Alterações isoladas na branch da PR #10; a `main` mantém-se intacta.
+
+### Próxima evolução
+- Registar digest exato do modelo e identificação de hardware nos benchmarks.
+- Comparar os mesmos prompts sob carga controlada, com avaliação da qualidade das respostas.
+- Executar a suíte completa e validar o CI da PR.
