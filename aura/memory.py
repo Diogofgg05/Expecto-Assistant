@@ -46,15 +46,22 @@ class MemoryEngine:
         """Counts only; never includes prompts, notes or model responses."""
         return self._embed_pool.status()
 
+    async def _embed_post(self, payload: dict, timeout: httpx.Timeout):
+        """Switchable local transport: keep-alive by default, classic per-call fallback."""
+        url = self.settings.ollama_url + '/api/embed'
+        if self.settings.embedding_keepalive:
+            client = await self._embed_pool.client()
+            return await client.post(url, json=payload, timeout=timeout)
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+            return await client.post(url, json=payload)
+
     async def _embed(self, text: str) -> list[float] | None:
         if not self.model:
             return None
         try:
-            client = await self._embed_pool.client()
-            response = await client.post(
-                self.settings.ollama_url + '/api/embed',
-                json={'model': self.model, 'input': text[:2000]},
-                timeout=httpx.Timeout(8.0, connect=2.0),
+            response = await self._embed_post(
+                {'model': self.model, 'input': text[:2000]},
+                httpx.Timeout(8.0, connect=2.0),
             )
             response.raise_for_status()
             vectors = response.json().get('embeddings', [])
@@ -178,12 +185,10 @@ class MemoryEngine:
             return {'indexed':0,'pending':0,'reason':''}
         # One Ollama request for a batch is substantially cheaper than N calls.
         try:
-            client = await self._embed_pool.client()
-            r = await client.post(
-                self.settings.ollama_url + '/api/embed',
-                json={'model': self.model,
-                      'input': [item['content'][:2000] for item in pending]},
-                timeout=httpx.Timeout(30.0, connect=2.0),
+            r = await self._embed_post(
+                {'model': self.model,
+                 'input': [item['content'][:2000] for item in pending]},
+                httpx.Timeout(30.0, connect=2.0),
             )
             r.raise_for_status()
             vectors = r.json().get('embeddings', [])
