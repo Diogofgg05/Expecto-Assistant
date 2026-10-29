@@ -96,29 +96,36 @@ class MemoryEngine:
                                      query_vector=None),
             )
 
-        # Overlap the local FTS/SQLite lookups with the Ollama embedding request.
-        # Each DB function uses its own connection; no DB cursor crosses threads.
-        def lexical_pair():
+        # Prefetch *both* lexical and semantic rows while Ollama calculates
+        # the query vector. No persistent cache, stale state or hidden memory
+        # retention: this snapshot is scoped to one request.
+        #
+        # Direct recall/recall_episodes calls retain their existing behaviour.
+        def fetch_pair():
             note_limit = max(1, min(notes_limit, 20))
-            return (
-                self.db.search_memories(question, limit=max(8, note_limit * 3)),
-                self.db.search_episodes(question, months, limit=30),
-            )
+            notes = self.db.search_memories(question, limit=max(8, note_limit * 3))
+            episodes = self.db.search_episodes(question, months, limit=30)
+            vectors = self.db.vectors(self.model, 2500)
+            episode_vectors = self.db.episode_vectors_in_window(self.model, months)
+            return notes, episodes, vectors, episode_vectors
 
-        vector, lexical = await asyncio.gather(
+        vector, snapshot = await asyncio.gather(
             self._embed(question[:2000]),
-            asyncio.to_thread(lexical_pair),
+            asyncio.to_thread(fetch_pair),
         )
         return await asyncio.gather(
             self.recall(question, notes_limit, query_vector=vector,
-                        _prefetched_lexical=lexical[0]),
+                        _prefetched_lexical=snapshot[0],
+                        _prefetched_vectors=snapshot[2]),
             self.recall_episodes(question, months, episodes_limit,
                                  query_vector=vector,
-                                 _prefetched_lexical=lexical[1]),
+                                 _prefetched_lexical=snapshot[1],
+                                 _prefetched_vectors=snapshot[3]),
         )
 
     async def recall(self, question: str, limit: int = 7, *,
-                     query_vector=_UNSET, _prefetched_lexical=_UNSET) -> list[dict]:
+                     query_vector=_UNSET, _prefetched_lexical=_UNSET,
+                     _prefetched_vectors=_UNSET) -> list[dict]:
         limit = max(1, min(limit, 20))
         lexical = (self.db.search_memories(question, limit=max(8, limit * 3))
                    if _prefetched_lexical is _UNSET else _prefetched_lexical)
@@ -128,7 +135,8 @@ class MemoryEngine:
             notes[entry['id']] = entry
             scores[entry['id']] = 1.5 / (1 + n) + 0.06 * int(entry.get('importance', 3))
         if self.model:
-            stored = self.db.vectors(self.model, 2500)
+            stored = (self.db.vectors(self.model, 2500)
+                      if _prefetched_vectors is _UNSET else _prefetched_vectors)
             if stored:
                 vector = await self._embed(question) if query_vector is _UNSET else query_vector
                 if vector:
@@ -169,7 +177,8 @@ class MemoryEngine:
             return {'indexed':0,'pending':len(pending),'reason':'Ollama ou embeddings indisponíveis.'}
 
     async def recall_episodes(self, question: str, months: int = 6, limit: int = 8, *,
-                              query_vector=_UNSET, _prefetched_lexical=_UNSET) -> list[dict]:
+                              query_vector=_UNSET, _prefetched_lexical=_UNSET,
+                              _prefetched_vectors=_UNSET) -> list[dict]:
         """Hybrid retrieval of 6-month conversations: BM25 plus local cosine.
 
         Never sends text off-device. Old transcript records without embeddings
@@ -190,7 +199,9 @@ class MemoryEngine:
                 # query norm calculated once rather than for every vector.
                 candidates = []
                 query_norm = math.sqrt(sum(v*v for v in query_vec))
-                for position, row in enumerate(self.db.episode_vectors_in_window(self.model,months)):
+                stored_rows = (self.db.episode_vectors_in_window(self.model,months)
+                               if _prefetched_vectors is _UNSET else _prefetched_vectors)
+                for position, row in enumerate(stored_rows):
                     try:
                         similarity = cosine(
                             query_vec, json.loads(row['vector_json']), left_norm=query_norm)
