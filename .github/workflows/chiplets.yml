@@ -9,6 +9,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for the pinned 4.3 A/B baseline
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -26,3 +28,11 @@ jobs:
         run: node --check web/orb.js && node --check web/app.js && node --check web/math.js && node --test tests/orb_frame_budget.test.cjs tests/math_render.test.cjs
       - name: Isolated cold-start proxy (not prior-commit A/B)
         run: python scripts/benchmark_chiplets.py --runs 3
+      - name: Reproducible performance 4.3 vs 4.4 A/B (offline)
+        run: python scripts/benchmark_processing_v44.py --iterations 220 --warmup 20 --output benchmark_results_v44.json
+      - name: Upload benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-4-4-ab
+          path: benchmark_results_v44.json
+          if-no-files-found: error
