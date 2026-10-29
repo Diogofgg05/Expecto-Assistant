@@ -30,3 +30,13 @@ São medições isoladas com esperas artificiais, NÃO resultados do Ollama ou d
 
 ### Continuidade
 Consultar primeiro a `main` atual e os PRs abertos, especialmente PR #10. Fazer alterações incrementais e registar benchmarks por commit e hardware. Não assumir que a PR foi integrada.
+
+## 2026-10-29 — Etapa 3: Ollama HTTP connection reuse (proposta)
+
+- `OllamaMultiLayerAdapter` oferece agora `async with` para reutilizar `httpx.AsyncClient` durante as chamadas sequenciais ao mesmo modelo.
+- `reason-hybrid` abre um único cliente HTTP para planeamento e geração, e fecha-o mesmo após erro.
+- Chamadas fora de contexto continuam a criar e fechar um cliente por chamada para compatibilidade.
+- Adicionados testes isolados com cliente HTTP simulado: reutilização e limpeza após chamadas normais.
+- **Benchmark de latência Ollama real: ainda não executado**. O benefício depende de manter ligação TCP e não altera a velocidade de inferência do modelo.
+- Preservadas as otimizações de pesquisa concorrente das etapas anteriores.
+- Pendente: executar testes completos/CI e medir TTFT, p50/p95 e RAM com Ollama local real, antes de afirmar ganhos em milissegundos.
