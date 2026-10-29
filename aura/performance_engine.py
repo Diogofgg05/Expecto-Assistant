@@ -79,9 +79,9 @@ class PerformanceEngine:
             if topic.startswith(opener):
                 topic = topic[len(opener):]
                 break
-        if re.search(r"\\b(?:e|mas|porque|como|quando|onde|devo|posso|"
+        if re.search(r"\b(?:e|mas|porque|como|quando|onde|devo|posso|"
                      r"quero|preciso|mim|comigo|ti|contigo|me|nos|"
-                     r"fazer|escolher)\\b", topic):
+                     r"fazer|escolher)\b", topic):
             return Route(True, "multi_part_question")
         return Route(False, "general_definition")
 
