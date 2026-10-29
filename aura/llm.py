@@ -10,6 +10,7 @@ from .memory import MemoryEngine
 from .identity import Identity, IdentitySettings
 from .adaptive_compute import AdaptiveCompute, ComputePolicy, ComputeBusyError, classify_task
 from .performance_engine import PerformanceEngine, Route
+from .http_pool import LocalInferencePool
 from .ollama_resilience import OllamaCircuitBreaker
 
 SYSTEM = '''És a Expecto, um assistente pessoal em português europeu. Responde de forma
@@ -33,6 +34,7 @@ class Ollama:
         self.performance = PerformanceEngine(settings.performance_profile)
         self._model_cache: dict[str, int | None] | None = None
         self._model_cache_at = 0.0
+        self._http_pool = LocalInferencePool(max_connections=max(1, min(2, settings.compute_max_active)))
         self.compute = AdaptiveCompute(ComputePolicy(
             primary_model=settings.ollama_model,
             fast_model=settings.compute_fast_model,
@@ -43,9 +45,14 @@ class Ollama:
             max_waiting=settings.compute_max_waiting,
         ))
 
+    async def close(self):
+        """Release persistent local HTTP sockets on application shutdown."""
+        await self._http_pool.aclose()
+
     def compute_status(self) -> dict:
         return {**self.compute.status(), 'ollama_resilience': vars(self._circuit.status()),
-                'performance': self.performance.status()}
+                'performance': self.performance.status(),
+                'ollama_http_pool': self._http_pool.status()}
 
     async def _installed_models(self) -> dict[str, int | None]:
         """Only inspect Ollama when a distinct fast model was explicitly configured."""
@@ -106,11 +113,11 @@ class Ollama:
                     {'role': 'user', 'content': prompt}],
                 'options': {'num_predict': 600, 'temperature': 0.1},
             }
-            async with httpx.AsyncClient(timeout=httpx.Timeout(45, connect=3)) as client:
-                resp = await client.post(self.settings.ollama_url + '/api/chat',
-                                         json=payload)
-                resp.raise_for_status()
-                return str(resp.json()['message']['content'])[:5000]
+            client = await self._http_pool.client()
+            resp = await client.post(self.settings.ollama_url + '/api/chat',
+                                     json=payload, timeout=httpx.Timeout(45, connect=3))
+            resp.raise_for_status()
+            return str(resp.json()['message']['content'])[:5000]
 
         return await self.compute.limiter.run(invoke)
 
@@ -157,8 +164,14 @@ class Ollama:
             )
 
     async def _personal_context(self, question: str):
-        notes = await self.memory.recall(question, 8)
-        episodes = await self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5)
+        if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
+            notes, episodes = await self.memory.recall_pair(
+                question, months=self.settings.episodic_lookback_months,
+                notes_limit=8, episodes_limit=5)
+        else:
+            notes = await self.memory.recall(question, 8)
+            episodes = await self.memory.recall_episodes(
+                question, self.settings.episodic_lookback_months, 5)
         # Never include unbounded external data in the prompt.
         knowledge = self.db.documents(query=question, limit=4)
         from .learning import LearningEngine
@@ -240,9 +253,9 @@ class Ollama:
                     payload['stream'] = True
                     chunks = []
                     length = 0
-                    async with httpx.AsyncClient(timeout=httpx.Timeout(65.0, connect=3.0)) as client:
-                        async with client.stream('POST', self.settings.ollama_url + '/api/chat',
-                                                 json=payload) as resp:
+                    client = await self._http_pool.client()
+                    async with client.stream('POST', self.settings.ollama_url + '/api/chat',
+                                             json=payload) as resp:
                             if resp.status_code == 404:
                                 return (f'O modelo {plan.model} não está instalado. '
                                         f'Executa: ollama pull {plan.model}.')
@@ -265,14 +278,14 @@ class Ollama:
                                 if frame.get('done') is True:
                                     break
                     return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
-                async with httpx.AsyncClient(timeout=httpx.Timeout(65.0, connect=3.0)) as client:
-                    resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
-                    if resp.status_code == 404:
-                        return (f'O modelo {plan.model} não está instalado. '
-                                f'Executa: ollama pull {plan.model}.')
-                    resp.raise_for_status()
-                    answer = resp.json().get('message', {}).get('content', '').strip()
-                    return answer or 'O modelo respondeu sem texto. Tenta novamente.'
+                client = await self._http_pool.client()
+                resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
+                if resp.status_code == 404:
+                    return (f'O modelo {plan.model} não está instalado. '
+                            f'Executa: ollama pull {plan.model}.')
+                resp.raise_for_status()
+                answer = resp.json().get('message', {}).get('content', '').strip()
+                return answer or 'O modelo respondeu sem texto. Tenta novamente.'
             result = await self.compute.limiter.run(invoke)
             self._circuit.success()
             return result
