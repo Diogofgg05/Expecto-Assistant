@@ -190,16 +190,32 @@ class BookSemanticIndex:
         """Human-labelled gold passage IDs; no LLM grades its own answers."""
         if not isinstance(cases,list) or not 1 <= len(cases)<=200:
             raise ValueError('Conjunto de avaliação inválido')
-        found=0;rr=0;details=[]
+        if not isinstance(limit,int) or isinstance(limit,bool) or not 1 <= limit <= 20:
+            raise ValueError('k deve estar entre 1 e 20')
+        found=0;rr=0;recall_total=0.0;precision_total=0.0;details=[]
         for c in cases:
-            if not isinstance(c,dict) or not c.get('question') or not isinstance(c.get('gold_passage_ids'),list) or not c['gold_passage_ids']:
+            if (not isinstance(c,dict) or not isinstance(c.get('question'),str)
+                    or not c['question'].strip() or not isinstance(c.get('gold_passage_ids'),list)
+                    or not c['gold_passage_ids']
+                    or any(not isinstance(g,str) or not g.strip() for g in c['gold_passage_ids'])):
                 raise ValueError('Cada caso precisa de pergunta e IDs esperados identificados manualmente')
+            gold=set(c['gold_passage_ids'])
             matched=await self.search(c['question'],encoder=encoder,book_id=c.get('book_id'),limit=limit)
             ids=[r['passage_id'] for r in matched]
-            ranks=[ids.index(g)+1 for g in c['gold_passage_ids'] if g in ids]
+            ranks=[i+1 for i,passage_id in enumerate(ids) if passage_id in gold]
             best=min(ranks) if ranks else None
+            hits=len(set(ids[:limit]) & gold)
+            recall=hits/len(gold)
+            precision=hits/limit
             found+=bool(best);rr+=(1/best if best else 0)
-            details.append({'question':c['question'],'hit':bool(best),'rank':best})
-        return {'cases':len(cases),'hit_at_k':round(found/len(cases),3),
-                'mrr':round(rr/len(cases),3),'k':limit,'details':details,
-                'note':'Mede recuperação de evidências; não prova compreensão, inferência ou verdade'}
+            recall_total+=recall;precision_total+=precision
+            details.append({'question':c['question'],'hit':bool(best),'rank':best,
+                            'gold_count':len(gold),'matched_gold':hits,
+                            'recall_at_k':round(recall,3),
+                            'precision_at_k':round(precision,3)})
+        count=len(cases)
+        return {'cases':count,'hit_at_k':round(found/count,3),
+                'mrr':round(rr/count,3),'recall_at_k':round(recall_total/count,3),
+                'precision_at_k':round(precision_total/count,3),
+                'k':limit,'details':details,
+                'note':'Mede recuperação de evidências rotuladas; não prova compreensão, inferência ou verdade'}
