@@ -10,6 +10,7 @@ from .memory import MemoryEngine
 from .identity import Identity, IdentitySettings
 from .adaptive_compute import AdaptiveCompute, ComputePolicy, ComputeBusyError, classify_task
 from .performance_engine import PerformanceEngine, Route
+from .resource_budget import AdaptiveMemoryBudget
 from .http_pool import LocalInferencePool
 from .ollama_resilience import OllamaCircuitBreaker
 
@@ -32,6 +33,9 @@ class Ollama:
         self.memory = memory or MemoryEngine(settings, db)
         self._circuit = OllamaCircuitBreaker()
         self.performance = PerformanceEngine(settings.performance_profile)
+        self.resource_guard = AdaptiveMemoryBudget(
+            enabled=(settings.performance_profile == 'legacy' and
+                     settings.performance_adaptive_memory))
         self._model_cache: dict[str, int | None] | None = None
         self._model_cache_at = 0.0
         self._http_pool = LocalInferencePool(max_connections=max(1, min(2, settings.compute_max_active)))
@@ -52,7 +56,8 @@ class Ollama:
     def compute_status(self) -> dict:
         return {**self.compute.status(), 'ollama_resilience': vars(self._circuit.status()),
                 'performance': self.performance.status(),
-                'ollama_http_pool': self._http_pool.status()}
+                'ollama_http_pool': self._http_pool.status(),
+                'resource_guard': self.resource_guard.status()}
 
     async def _installed_models(self) -> dict[str, int | None]:
         """Only inspect Ollama when a distinct fast model was explicitly configured."""
@@ -249,6 +254,12 @@ class Ollama:
                     if not route.use_context:
                         payload['options']['num_predict'] = min(
                             plan.options['num_predict'], 220)
+                        # Only standalone, context-free Legacy questions can
+                        # be downscaled. Complex/personal questions never
+                        # probe host RAM or lose their inference budget.
+                        if self.resource_guard.enabled:
+                            payload['options'] = self.resource_guard.tune_quick(
+                                payload['options'])
                 if on_token is not None:
                     payload['stream'] = True
                     chunks = []
