@@ -44,3 +44,11 @@ jobs:
           name: performance-4-5-ab
           path: benchmark_results_v45.json
           if-no-files-found: error
+      - name: Embedding transport 4.5 vs 4.6 HTTP benchmark (mock Ollama)
+        run: python scripts/benchmark_embedding_transport_v46.py --runs 30 --warmup 4 --output benchmark_results_v46.json
+      - name: Upload performance 4.6 benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-4-6-ab
+          path: benchmark_results_v46.json
+          if-no-files-found: error
