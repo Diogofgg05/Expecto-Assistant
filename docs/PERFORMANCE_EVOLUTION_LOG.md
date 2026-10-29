@@ -76,3 +76,12 @@ Testar contra Ollama instalado e medir várias execuções após aquecimento (p5
 
 ### Próxima evolução
 Integrar streaming final na interface sem publicar JSON parcial ou respostas sem verificação, e comparar p50/p95/p99 entre modos em hardware alvo.
+
+## 2026-10-29 — Etapa 7: telemetria e tratamento de erros no streaming (proposta)
+
+- O leitor `collect_json_stream` converte as durações do evento terminal de Ollama para ms, incluindo carregamento, processamento de prompt e geração; calcula tokens/s quando possível.
+- Rejeita eventos com erro explícito e linhas de evento demasiado extensas.
+- Mantém JSON completo e validado antes de entregar a proposta para verificação; não publica resultados parciais.
+- Dois testes de regressão acrescentados para conversão de tempos e eventos de erro.
+- Não foi executado benchmark real nem a suíte completa nesta sessão. Nenhuma redução de latência é alegada nesta etapa.
+- Próximo passo: instrumentar a interface e executar comparação real de p50/p95/p99 em hardware alvo.
