@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
+import socket
 from pathlib import Path
 import random
 import statistics
@@ -42,9 +43,10 @@ class MeasuredServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self):
+    def __init__(self, *, tcp_nodelay: bool):
         self.accepted_connections = 0
         self.post_requests = 0
+        self.tcp_nodelay = tcp_nodelay
         super().__init__(("127.0.0.1", 0), Handler)
 
     def get_request(self):
@@ -55,6 +57,14 @@ class MeasuredServer(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    def setup(self):
+        # A tiny payload written as separate HTTP header/body packets may
+        # trigger ~40ms delayed ACK on localhost, unlike Go's Ollama server
+        # which configures TCP_NODELAY. Benchmark *both* transport cases.
+        if self.server.tcp_nodelay:
+            self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        super().setup()
 
     def log_message(self, *args):
         return
@@ -82,8 +92,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def two_mock_servers():
-    a, b = MeasuredServer(), MeasuredServer()
+def two_mock_servers(*, tcp_nodelay: bool):
+    a, b = (MeasuredServer(tcp_nodelay=tcp_nodelay),
+            MeasuredServer(tcp_nodelay=tcp_nodelay))
     threads = [
         threading.Thread(target=a.serve_forever, daemon=True),
         threading.Thread(target=b.serve_forever, daemon=True),
@@ -110,8 +121,9 @@ def summary(values):
     }
 
 
-async def compare(old_type, *, runs: int, warmup: int):
-    with two_mock_servers() as (before_server, after_server):
+async def compare(old_type, *, runs: int, warmup: int,
+                  tcp_nodelay: bool):
+    with two_mock_servers(tcp_nodelay=tcp_nodelay) as (before_server, after_server):
         before = old_type(
             Settings(embedding_model="mock", database_encryption_required=False,
                      ollama_url=f"http://127.0.0.1:{before_server.server_port}"),
@@ -169,8 +181,15 @@ def main():
     if not 10 <= args.runs <= 150 or not 1 <= args.warmup <= 20:
         p.error("runs 10..150 and warmup 1..20 required")
 
-    measured = asyncio.run(
-        compare(old_memory_engine(), runs=args.runs, warmup=args.warmup))
+    old_type = old_memory_engine()
+    async def run_both():
+        return {
+            "default_http11_mock": await compare(
+                old_type, runs=args.runs, warmup=args.warmup, tcp_nodelay=False),
+            "tcp_nodelay_mock": await compare(
+                old_type, runs=args.runs, warmup=args.warmup, tcp_nodelay=True),
+        }
+    measured = asyncio.run(run_both())
     report = {
         "schema": "expecto-embedding-transport-ab-v46",
         "baseline_git_revision": BASELINE,
@@ -181,7 +200,7 @@ def main():
         "ollama_model_executed": False,
         "real_ollama_inference_measured": False,
         "response_vectors_equal": True,
-        "benchmark": measured,
+        "benchmarks": measured,
         "limitations": [
             "This is a local mock HTTP server, not actual Ollama embedding inference.",
             "The time improvement depends on OS TCP and concurrent load.",
@@ -192,13 +211,15 @@ def main():
     }
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2)+"\n",
                            encoding="utf-8")
-    a = measured["baseline"]; b = measured["optimized"]
-    print(f"4.5 -> 4.6: HTTP requests each={a['http_requests_total']}")
-    print(f"TCP connections 4.5={a['tcp_connections_total']} "
-          f"4.6={b['tcp_connections_total']}")
-    print(f"p50 transport old={a['p50_ms']}ms new={b['p50_ms']}ms "
-          f"ratio={a['p50_ms']/max(b['p50_ms'], .00001):.2f}x")
-    print(f"p95 transport old={a['p95_ms']}ms new={b['p95_ms']}ms")
+    for case_name, result in measured.items():
+        a = result["baseline"]
+        b = result["optimized"]
+        print(f"{case_name}: HTTP requests each={a['http_requests_total']}")
+        print(f"{case_name}: TCP connections old={a['tcp_connections_total']}"
+              f" new={b['tcp_connections_total']}")
+        print(f"{case_name}: p50 old={a['p50_ms']}ms new={b['p50_ms']}ms"
+              f" ratio={a['p50_ms']/max(b['p50_ms'], .00001):.2f}x")
+        print(f"{case_name}: p95 old={a['p95_ms']}ms new={b['p95_ms']}ms")
     print("MOCK OLLAMA: no real model or Windows hardware inference.")
     print("Saved:", args.output)
 
