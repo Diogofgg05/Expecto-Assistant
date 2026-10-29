@@ -26,7 +26,7 @@ Sem a variável `AURA_PERFORMANCE_ADAPTIVE_MEMORY=true`, a funcionalidade manté
 | <= 512 MB ou <= 5% | critical | num_ctx 1536, num_batch 16, num_predict 112 |
 | Desconhecida/erro de leitura | unknown | mantêm-se opções originais |
 
-Os limites são tetos, não valores forçados para cima. Nunca são aplicados a perguntas pessoais, com histórico, complexas ou matemáticas pelo novo recurso. **O perfil legacy já limita o contexto para essas perguntas**, independentemente desta funcionalidade. Para máxima fidelidade usa `balanced`, que não ativa este adaptador.
+Os limites são tetos, não valores forçados para cima. Nunca são aplicados a perguntas pessoais, com histórico, complexas ou matemáticas pelo novo recurso. **Mesmo no perfil `legacy`, as perguntas pessoais, complexas e com histórico preservam agora as opções de inferência do modelo principal.** Para máxima fidelidade podes continuar a usar `balanced`, que não ativa este adaptador.
 
 ## Diagnóstico
 
@@ -41,6 +41,6 @@ py -3.12 -m pytest -q tests/test_performance_engine_v40.py tests/test_performanc
 py -3.12 -m pytest -q tests
 ```
 
-GitHub Actions de 29/10/2026: 422 testes Python aprovados, 2 ignorados, e 7 testes JavaScript aprovados na execução 40874919051. Foram usados simuladores e testes automatizados; não se pode inferir ganho percentual, autonomia energética ou menor consumo real de RAM antes de benchmarking com hardware e modelos reais.
+GitHub Actions de 29/10/2026: 422 testes Python aprovados, 2 ignorados, e 7 testes JavaScript aprovados na execução 40875137942. Foram usados simuladores e testes automatizados; não se pode inferir ganho percentual, autonomia energética ou menor consumo real de RAM antes de benchmarking com hardware e modelos reais.
 
 A 4.2 preserva as melhorias da 4.1: cliente HTTP partilhado com Ollama, um único embedding de pergunta para notas e conversas, circuit breaker e streaming SSE. Não apaga a memória, não atualiza modelos e não altera a identidade do assistente.
