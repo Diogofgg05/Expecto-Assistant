@@ -48,9 +48,9 @@ def summary(values: list[float]):
     }
 
 
-def parse_sse_lines(lines, now=perf_counter):
+def parse_sse_lines(lines, *, started_at: float, now=perf_counter):
     """Consume SSE frames; never return or store generated token contents."""
-    started = now()
+    started = started_at
     first = None
     final = None
     draft_chars = 0
@@ -106,12 +106,19 @@ def benchmark(base_url: str, label: str, runs: int, warmups: int):
         def one_case(prompt):
             request = {"message": prompt, "history": [],
                        "session_id": "benchmark-local-v44"}
+            start = perf_counter()  # Include HTTP connection and request time.
             with client.stream("POST", base_url + "/api/command/stream",
                                json=request) as response:
                 response.raise_for_status()
                 if "text/event-stream" not in response.headers.get("content-type", ""):
                     raise RuntimeError("SSE streaming not available")
-                return parse_sse_lines(response.iter_lines())
+                result = parse_sse_lines(response.iter_lines(), started_at=start)
+                if result["first_token_ms"] is None:
+                    raise RuntimeError(
+                        "No model draft token received. Check local Ollama/model "
+                        "and ensure the question was sent to the inference path."
+                    )
+                return result
 
         cases = {}
         for case_id, question in PROMPTS:
@@ -137,7 +144,7 @@ def benchmark(base_url: str, label: str, runs: int, warmups: int):
             "prompt_ids": [case_id for case_id, _ in PROMPTS],
             "cases": cases,
             "saved_private_text": False,
-            "actual_ollama_used": True,
+            "model_draft_stream_confirmed": True,
             "limitations": (
                 "Measures localhost Expecto SSE, including backend review and "
                 "transport overhead. Draft tokens may be revised in the final "
@@ -183,7 +190,8 @@ def main():
     for key, value in report["cases"].items():
         print(key, "first token:", value["first_token"],
               "verified final:", value["verified_final"])
-    print("Ollama real: SIM. Resposta e perguntas privadas guardadas: NÃO.")
+    print("Foi recebido streaming de tokens do percurso de inferência.")
+    print("A ferramenta não guarda textos de respostas ou perguntas privadas.")
     print("Relatório:", args.output)
 
 
