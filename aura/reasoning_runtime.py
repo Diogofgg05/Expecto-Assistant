@@ -124,18 +124,20 @@ class ReasoningRuntime:
     """
 
     def __init__(self, *, review_mode: str = "balanced"):
-        if review_mode not in {"off", "balanced", "deep"}:
+        if review_mode not in {"off", "balanced", "deep", "fast"}:
             raise ValueError("invalid review mode")
         self.review_mode = review_mode
         self._reviewed = 0
         self._revisions = 0
         self._arithmetic_rejections = 0
         self._review_unavailable = 0
+        self._fast_skipped_reviews = 0
 
     def status(self) -> dict:
         return {"review_mode": self.review_mode, "reviewed": self._reviewed,
                 "revisions": self._revisions, "arithmetic_rejections": self._arithmetic_rejections,
                 "review_unavailable": self._review_unavailable,
+                "fast_skipped_reviews": self._fast_skipped_reviews,
                 "semantic_truth_verified": False,
                 "reviewer": "same_local_model_not_independent_fact_checker",
                 "saved_prompts": False}
@@ -187,6 +189,14 @@ class ReasoningRuntime:
         unsafe_math = before["status"] in {
             "incorrect_arithmetic", "unverifiable_arithmetic", "not_checked"
         }
+        if self.review_mode == "fast" and not unsafe_math:
+            # No second Ollama call for a mechanically safe draft.
+            # This is a speed/quality trade-off, NOT a factual verifier.
+            self._fast_skipped_reviews += 1
+            return ReviewOutcome(
+                answer=answer, status="fast_single_pass",
+                arithmetic_checks=len(before["checks"]),
+                limitations=("Crítica semântica por modelo omitida em modo rápido.",))
         if self.review_mode != "deep" and tier != "complex" and not unsafe_math:
             return ReviewOutcome(answer=answer, status="single_pass",
                                  arithmetic_checks=len(before["checks"]))
@@ -205,27 +215,34 @@ class ReasoningRuntime:
         issues: list[str] = []
         calls = 0
 
-        # A separate model critique is a heuristic only; an exact arithmetic
-        # mismatch is sufficient to require a repair regardless of this vote.
-        try:
-            raw = await asyncio.wait_for(
-                ask(self._review_prompt(question, answer)), timeout=35)
-            calls += 1
-            data = json.loads(raw)
-            if not isinstance(data, dict) or type(data.get("needs_revision")) is not bool:
-                raise ValueError("invalid reviewer response")
-            raw_issues = data.get("issues")
-            if not isinstance(raw_issues, list) or len(raw_issues) > 3 or any(
-                not isinstance(item, str) for item in raw_issues
-            ):
-                raise ValueError("invalid review issues")
-            issues = [item.strip()[:220] for item in raw_issues if item.strip()]
-            needs_revision = data["needs_revision"] and bool(issues)
-        except (ValueError, TypeError, KeyError, json.JSONDecodeError,
-                asyncio.TimeoutError, OSError, httpx.HTTPError, ComputeBusyError):
-            self._review_unavailable += 1
+        # A second model critique is unnecessary in opt-in fast mode;
+        # known arithmetic errors still require a bounded repair.
+        if self.review_mode == "fast":
+            self._fast_skipped_reviews += 1
+            limitations.append("Crítica semântica omitida; correção matemática exigida.")
             needs_revision = False
-            limitations.append("Crítica estruturada indisponível.")
+        else:
+            # A separate model critique is a heuristic only; an exact arithmetic
+            # mismatch is sufficient to require a repair regardless of this vote.
+            try:
+                raw = await asyncio.wait_for(
+                    ask(self._review_prompt(question, answer)), timeout=35)
+                calls += 1
+                data = json.loads(raw)
+                if not isinstance(data, dict) or type(data.get("needs_revision")) is not bool:
+                    raise ValueError("invalid reviewer response")
+                raw_issues = data.get("issues")
+                if not isinstance(raw_issues, list) or len(raw_issues) > 3 or any(
+                    not isinstance(item, str) for item in raw_issues
+                ):
+                    raise ValueError("invalid review issues")
+                issues = [item.strip()[:220] for item in raw_issues if item.strip()]
+                needs_revision = data["needs_revision"] and bool(issues)
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError,
+                    asyncio.TimeoutError, OSError, httpx.HTTPError, ComputeBusyError):
+                self._review_unavailable += 1
+                needs_revision = False
+                limitations.append("Crítica estruturada indisponível.")
 
         if not incorrect and not needs_revision:
             return ReviewOutcome(answer=answer, status="reviewed_model_only",
