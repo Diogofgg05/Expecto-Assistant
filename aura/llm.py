@@ -201,19 +201,21 @@ class Ollama:
         local_task = asyncio.create_task(
             asyncio.to_thread(self._local_context_parts, question))
         try:
-        if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
-            notes, episodes = await self.memory.recall_pair(
-                question, months=self.settings.episodic_lookback_months,
-                notes_limit=8, episodes_limit=5)
-        else:
-            notes = await self.memory.recall(question, 8)
-            episodes = await self.memory.recall_episodes(
-                question, self.settings.episodic_lookback_months, 5)
-            (knowledge, learned_claims, temporal, linked, summary_items,
-             continuity_context, reflection_context) = await local_task
+            if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
+                notes, episodes = await self.memory.recall_pair(
+                    question, months=self.settings.episodic_lookback_months,
+                    notes_limit=8, episodes_limit=5)
+            else:
+                notes = await self.memory.recall(question, 8)
+                episodes = await self.memory.recall_episodes(
+                    question, self.settings.episodic_lookback_months, 5)
+                (knowledge, learned_claims, temporal, linked, summary_items,
+                 continuity_context, reflection_context) = await local_task
         finally:
             if not local_task.done():
                 local_task.cancel()
+        from .temporal import DISPLAY
+        from .relations import DISPLAY as RELATION_DISPLAY
         context = ('ESTRUTURAS CONSOLIDADAS (excertos, não factos verificados):\n' +
                    '\n'.join(x['content'][:1000] for x in summary_items) + '\n\n' +'ESTADO ATUAL REGISTADO (declarações do utilizador, não factos verificados):\n' +
                    '\n'.join(f"- {DISPLAY.get(t['subject'], t['subject'])}: {t['value']} (registado em {t['valid_from'][:10]})" for t in temporal) +
