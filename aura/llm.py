@@ -196,24 +196,27 @@ class Ollama:
         )
 
     async def _personal_context(self, question: str):
-        # Queries and embedding requests are independent. Their overlap
-        # shortens preparation time without dropping any private context.
-        local_task = asyncio.create_task(
-            asyncio.to_thread(self._local_context_parts, question))
-        try:
-            if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
+        # Thread overhead is only worthwhile when the semantic embedding
+        # request can overlap with independent SQLite context lookups.
+        if getattr(self.memory, "model", None) and hasattr(self.memory, "recall_pair"):
+            local_task = asyncio.create_task(
+                asyncio.to_thread(self._local_context_parts, question))
+            try:
                 notes, episodes = await self.memory.recall_pair(
                     question, months=self.settings.episodic_lookback_months,
                     notes_limit=8, episodes_limit=5)
-            else:
-                notes = await self.memory.recall(question, 8)
-                episodes = await self.memory.recall_episodes(
-                    question, self.settings.episodic_lookback_months, 5)
+                (knowledge, learned_claims, temporal, linked, summary_items,
+                 continuity_context, reflection_context) = await local_task
+            finally:
+                if not local_task.done():
+                    local_task.cancel()
+        else:
+            # Fully lexical lookups are local/synchronous already.
+            notes = await self.memory.recall(question, 8)
+            episodes = await self.memory.recall_episodes(
+                question, self.settings.episodic_lookback_months, 5)
             (knowledge, learned_claims, temporal, linked, summary_items,
-             continuity_context, reflection_context) = await local_task
-        finally:
-            if not local_task.done():
-                local_task.cancel()
+             continuity_context, reflection_context) = self._local_context_parts(question)
         from .temporal import DISPLAY
         from .relations import DISPLAY as RELATION_DISPLAY
         context = ('ESTRUTURAS CONSOLIDADAS (excertos, não factos verificados):\n' +
@@ -236,17 +239,23 @@ class Ollama:
 
     async def _reply_impl(self, question: str, history: list[dict] | None = None, *,
                           on_token=None, route: Route, mark_prepared=None) -> str:
-        if route.use_context:
-            context, continuity_context, reflection_context = await self._personal_context(question)
-        else:
-            context = continuity_context = reflection_context = ''
+        # 4.4 fast-fail: never retrieve/deserialize private memory when an
+        # opened Ollama circuit breaker cannot generate an answer.
+        if not self._circuit.allow():
+            return ('O Ollama está temporariamente indisponível. Os comandos locais continuam disponíveis; tenta novamente dentro de alguns segundos.')
+        try:
+            if route.use_context:
+                context, continuity_context, reflection_context = await self._personal_context(question)
+            else:
+                context = continuity_context = reflection_context = ''
+        except BaseException:
+            self._circuit.release_probe()
+            raise
         messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
         for x in (history or [])[-6:]:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
                 messages.append({'role': x['role'], 'content': x['content'][:1500]})
         messages.append({'role': 'user', 'content': question[:2000]})
-        if not self._circuit.allow():
-            return ('O Ollama está temporariamente indisponível. Os comandos locais continuam disponíveis; tenta novamente dentro de alguns segundos.')
         try:
             use_fast = (self.compute.policy.fast_model and
                         self.compute.policy.fast_model != self.compute.policy.primary_model and
