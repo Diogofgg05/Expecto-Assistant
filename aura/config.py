@@ -38,6 +38,7 @@ class Settings:
     performance_profile: str = 'balanced'  # balanced | legacy
     performance_num_ctx: int = 3072  # used in legacy only
     performance_num_batch: int = 64  # used in legacy only
+    performance_adaptive_memory: bool = False  # opt-in pressure tuning
     reasoning_review_mode: str = 'balanced'  # off | balanced | deep
     searxng_url: str = ''
     research_interval_hours: int = 24
@@ -76,6 +77,7 @@ class Settings:
             performance_profile=os.getenv('AURA_PERFORMANCE_PROFILE', 'balanced').lower(),
             performance_num_ctx=max(512, min(32768, int(os.getenv('AURA_PERFORMANCE_NUM_CTX', '3072')))),
             performance_num_batch=max(8, min(1024, int(os.getenv('AURA_PERFORMANCE_NUM_BATCH', '64')))),
+            performance_adaptive_memory=os.getenv('AURA_PERFORMANCE_ADAPTIVE_MEMORY', 'false').strip().lower() in ('true','1','yes'),
             reasoning_review_mode=os.getenv('AURA_REASONING_REVIEW_MODE', 'balanced'),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
