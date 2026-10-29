@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import math
 import asyncio
+import heapq
 import httpx
 from .config import Settings
 from .database import Database
@@ -14,11 +15,14 @@ from .database import Database
 _UNSET = object()  # distinguishes absent vector from a failed/empty embedding
 
 
-def cosine(left: list[float], right: list[float]) -> float:
+def cosine(left: list[float], right: list[float], *,
+           left_norm: float | None = None) -> float:
+    """Cosine similarity; a precomputed query norm avoids repeated work."""
     if len(left) != len(right) or not left:
         return 0.0
     total = sum(a * b for a, b in zip(left, right))
-    denom = math.sqrt(sum(a*a for a in left) * sum(b*b for b in right))
+    lnorm = left_norm if left_norm is not None else math.sqrt(sum(a*a for a in left))
+    denom = lnorm * math.sqrt(sum(b*b for b in right))
     return total / denom if denom else 0.0
 
 
@@ -83,17 +87,39 @@ class MemoryEngine:
         methods retain their behaviour. A failed embed falls back to lexical
         retrieval for both collections, avoiding duplicate network failures.
         """
-        vector = await self._embed(question[:2000]) if self.model else None
+        if not self.model:
+            return await asyncio.gather(
+                self.recall(question, notes_limit, query_vector=None),
+                self.recall_episodes(question, months, episodes_limit,
+                                     query_vector=None),
+            )
+
+        # Overlap the local FTS/SQLite lookups with the Ollama embedding request.
+        # Each DB function uses its own connection; no DB cursor crosses threads.
+        def lexical_pair():
+            note_limit = max(1, min(notes_limit, 20))
+            return (
+                self.db.search_memories(question, limit=max(8, note_limit * 3)),
+                self.db.search_episodes(question, months, limit=30),
+            )
+
+        vector, lexical = await asyncio.gather(
+            self._embed(question[:2000]),
+            asyncio.to_thread(lexical_pair),
+        )
         return await asyncio.gather(
-            self.recall(question, notes_limit, query_vector=vector),
+            self.recall(question, notes_limit, query_vector=vector,
+                        _prefetched_lexical=lexical[0]),
             self.recall_episodes(question, months, episodes_limit,
-                                 query_vector=vector),
+                                 query_vector=vector,
+                                 _prefetched_lexical=lexical[1]),
         )
 
     async def recall(self, question: str, limit: int = 7, *,
-                     query_vector=_UNSET) -> list[dict]:
+                     query_vector=_UNSET, _prefetched_lexical=_UNSET) -> list[dict]:
         limit = max(1, min(limit, 20))
-        lexical = self.db.search_memories(question, limit=max(8, limit * 3))
+        lexical = (self.db.search_memories(question, limit=max(8, limit * 3))
+                   if _prefetched_lexical is _UNSET else _prefetched_lexical)
         scores: dict[str, float] = {}
         notes: dict[str, dict] = {}
         for n, entry in enumerate(lexical):
@@ -104,9 +130,11 @@ class MemoryEngine:
             if stored:
                 vector = await self._embed(question) if query_vector is _UNSET else query_vector
                 if vector:
+                    query_norm = math.sqrt(sum(v*v for v in vector))
                     for entry in stored:
                         try:
-                            score = cosine(vector, json.loads(entry['vector_json']))
+                            score = cosine(vector, json.loads(entry['vector_json']),
+                                           left_norm=query_norm)
                         except (ValueError, TypeError):
                             continue
                         if score >= 0.39:
@@ -139,14 +167,15 @@ class MemoryEngine:
             return {'indexed':0,'pending':len(pending),'reason':'Ollama ou embeddings indisponíveis.'}
 
     async def recall_episodes(self, question: str, months: int = 6, limit: int = 8, *,
-                              query_vector=_UNSET) -> list[dict]:
+                              query_vector=_UNSET, _prefetched_lexical=_UNSET) -> list[dict]:
         """Hybrid retrieval of 6-month conversations: BM25 plus local cosine.
 
         Never sends text off-device. Old transcript records without embeddings
         remain searchable lexically while the background batch index catches up.
         """
         limit=max(1,min(int(limit),30))
-        lexical=self.db.search_episodes(question, months, limit=30)
+        lexical=(self.db.search_episodes(question, months, limit=30)
+                 if _prefetched_lexical is _UNSET else _prefetched_lexical)
         collected={item['id']:dict(item) for item in lexical}
         scores={item['id']:1.0/(30+rank) for rank,item in enumerate(lexical)}
         if self.model:
@@ -155,16 +184,24 @@ class MemoryEngine:
             query_vec=(await self._embed(question[:2000]) if query_vector is _UNSET
                        else query_vector)
             if query_vec:
-                semantic=[]
-                for row in self.db.episode_vectors_in_window(self.model,months):
+                # Top-50 bounded min heap instead of sorting every match;
+                # query norm calculated once rather than for every vector.
+                candidates = []
+                query_norm = math.sqrt(sum(v*v for v in query_vec))
+                for position, row in enumerate(self.db.episode_vectors_in_window(self.model,months)):
                     try:
-                        similarity=cosine(query_vec,json.loads(row['vector_json']))
-                    except (ValueError, TypeError):
+                        similarity = cosine(
+                            query_vec, json.loads(row['vector_json']), left_norm=query_norm)
+                    except (ValueError, TypeError, OverflowError):
                         continue
-                    if similarity >= 0.56:  # conservative relevance gate
-                        semantic.append((similarity,row))
-                semantic.sort(key=lambda pair:pair[0],reverse=True)
-                for rank,(similarity,item) in enumerate(semantic[:50]):
+                    if similarity >= 0.56:
+                        ranked = (similarity, -position, row)
+                        if len(candidates) < 50:
+                            heapq.heappush(candidates, ranked)
+                        elif ranked > candidates[0]:
+                            heapq.heapreplace(candidates, ranked)
+                for rank, (similarity, _, item) in enumerate(
+                        sorted(candidates, reverse=True)):
                     collected[item['id']]={k:v for k,v in item.items() if k!='vector_json'}
                     scores[item['id']]=scores.get(item['id'],0)+1.0/(30+rank)
                     collected[item['id']]['semantic_score']=round(similarity,3)
