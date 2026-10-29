@@ -209,8 +209,8 @@ class Ollama:
                 notes = await self.memory.recall(question, 8)
                 episodes = await self.memory.recall_episodes(
                     question, self.settings.episodic_lookback_months, 5)
-                (knowledge, learned_claims, temporal, linked, summary_items,
-                 continuity_context, reflection_context) = await local_task
+            (knowledge, learned_claims, temporal, linked, summary_items,
+             continuity_context, reflection_context) = await local_task
         finally:
             if not local_task.done():
                 local_task.cancel()
