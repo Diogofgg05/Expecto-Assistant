@@ -191,3 +191,27 @@ python -m aura.ollama_tuning_lab --model qwen3 --baseline-ctx 8192 --candidate-c
 1. Executar no hardware-alvo, com a suíte completa e benchmark comparável.
 2. Expandir testes de qualidade de resposta para matemática, código, RAG e fontes contraditórias.
 3. Registar opções completas de inferência, versão Ollama, consumo de RAM e carga térmica para comparações mais rigorosas.
+
+## 2026-10-29 — Etapa 13: revisão estática Python e integridade RAG (candidata)
+
+### Diagnóstico
+`BookResearchEngine.investigate` selecionava primeiro as passagens por ranking, sobreposição e limite, e só depois verificava correspondência com o índice. Uma passagem desatualizada podia ocupar uma vaga de `limit` e impedir o retorno de outra evidência válida.
+
+### Implementação
+- `aura/book_research.py`: valida (book_id, página, texto, text_hash) e recalcula SHA-256 do conteúdo *antes* da seleção final; otimiza cálculo de tokens para a desduplicação.
+- `aura/code_inspection.py`: API estática `inspect_python(source)` baseada na AST; identifica erros de sintaxe, `eval/exec`, `pickle.load(s)`, `subprocess(shell=True)`, `except:` e funções extensas. Nunca executa, importa ou altera código enviado pelo utilizador. As heurísticas não provam ausência de vulnerabilidades.
+- `tests/test_programming_rag_integrity.py`: testes novos para inspeção estática e fonte inválida com classificação superior não bloquear a fonte válida.
+- `tests/test_book_research_v41.py`: fixtures corrigidas para SHA-256 reais, preservando a validação dos testes anteriores.
+- Nenhuma nova dependência nem alteração automática de parâmetros dos modelos.
+
+### Verificação e limites
+Alterações e testes foram submetidos ao GitHub; a suíte completa, os testes de integração reais e a execução do Ollama **não foram confirmados** nesta etapa. Não se afirma ganho de velocidade em ms nem aumento comprovado de accuracy/recall.
+A revisão de código é **análise estática de Python**, não execução em sandbox, resolução de bugs por IA ou auditoria de segurança integral.
+
+### Decisão
+**Candidata para revisão**, ainda não aprovada. Preservadas a proveniência e classificação explícita das evidências e o comportamento conservador de validação de respostas.
+
+### Próximos passos
+1. CI e avaliação RAG com conjunto gold rotulado (hit@k, MRR, fonte adulterada).
+2. Integração opcional e limitada da inspeção de Python no fluxo de perguntas de programação.
+3. Avaliação de tarefas reais de código com testes em sandbox externo e qualidade verificada, sem executar código de origem desconhecida no processo principal.
