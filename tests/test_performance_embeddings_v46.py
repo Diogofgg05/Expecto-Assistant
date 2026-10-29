@@ -135,30 +135,25 @@ def test_embedded_http_failure_preserves_lexical_fallback(monkeypatch,tmp_path):
     asyncio.run(run())
 
 
-def test_application_shutdown_closes_embedding_pool(tmp_path, monkeypatch):
-    # TestClient owns the ASGI lifespan; activating the memory pool should
-    # guarantee cleanup without enabling any background service.
+def test_application_shutdown_closes_activated_memory(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from aura.app import create_app
-    FakeClient.created = []
-    monkeypatch.setattr("aura.http_pool.httpx.AsyncClient", FakeClient)
+
+    observed = []
+    close_original = MemoryEngine.close
+
+    async def observed_close(self):
+        observed.append(self)
+        await close_original(self)
+
+    monkeypatch.setattr(MemoryEngine, "close", observed_close)
     app = create_app(Settings(data_dir=tmp_path,
                               database_encryption_required=False,
                               embedding_model="test"))
 
     with TestClient(app) as client:
-        # Uses a genuine memory endpoint without requiring Ollama chat.
         response = client.get("/api/memory/search", params={"q":"processador"})
         assert response.status_code == 200
-        assert len(FakeClient.created) == 0  # no stored vectors -> no embedding
-        # Force activation through index-independent _embed in the event loop
-        # by invoking the underlying memory object via the API's runtime.
-        engine = next(
-            value.cell_contents for endpoint in app.routes
-            if getattr(endpoint, "path", "") == "/api/memory/search"
-            for value in (getattr(endpoint.endpoint, "__closure__", ()) or ())
-            if hasattr(value, "cell_contents")
-            and hasattr(value.cell_contents, "memory")
-        )
-        _ = engine  # Regression: endpoint must remain callable during lifespan.
-    assert all(item.is_closed for item in FakeClient.created)
+
+    assert len(observed) == 1
+    assert observed[0].transport_status()["active"] is False
