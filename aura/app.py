@@ -80,6 +80,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for task in (worker, memory_worker, backups):
             with suppress(asyncio.CancelledError):
                 await task
+        # Never instantiate the Ollama chiplet merely to close its sockets.
+        llm = engine.__dict__.get('llm')
+        if llm is not None:
+            await llm.close()
 
     app = FastAPI(title='Expecto Ultimate API', version='3.3.0-fact-verification', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
