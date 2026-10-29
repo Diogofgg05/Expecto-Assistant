@@ -6,6 +6,11 @@ from aura.benchmark_compare import compare
 
 def report(ms=100, rate=50, model='qwen3'):
     return {'model': model, 'url': 'http://127.0.0.1:11434', 'streaming': False,
+            'schema_version': 2, 'model_digest': 'a' * 64,
+            'workload_sha256': 'b' * 64,
+            'hardware': {'system': 'Linux', 'architecture': 'x86_64',
+                         'cpu_model': 'Test CPU', 'logical_cpus': 4,
+                         'physical_ram_bytes': 8589934592},
             'python': '3.12', 'platform': 'test-host', 'runs': 20,
             'samples': [{'elapsed_ms': ms, 'tokens_per_second': rate}
                         for _ in range(20)],
@@ -60,3 +65,33 @@ def test_missing_throughput_does_not_block_latency():
     for row in before['samples'] + after['samples']:
         row.pop('tokens_per_second')
     assert compare(before, after)['decision'] == 'candidate_for_review'
+
+
+def test_different_model_digest_is_inconclusive():
+    candidate = report(ms=70)
+    candidate['model_digest'] = 'c' * 64
+    assert compare(report(), candidate)['decision'] == 'inconclusive'
+
+
+def test_different_hardware_is_inconclusive():
+    candidate = report(ms=70)
+    candidate['hardware']['physical_ram_bytes'] *= 2
+    assert compare(report(), candidate)['decision'] == 'inconclusive'
+
+
+def test_different_prompt_is_inconclusive():
+    candidate = report(ms=70)
+    candidate['workload_sha256'] = 'd' * 64
+    assert compare(report(), candidate)['decision'] == 'inconclusive'
+
+
+def test_legacy_report_is_inconclusive():
+    baseline = report()
+    baseline.pop('schema_version')
+    assert compare(baseline, report(ms=70))['decision'] == 'inconclusive'
+
+
+def test_missing_cpu_profile_is_inconclusive():
+    candidate = report(ms=70)
+    candidate['hardware']['cpu_model'] = None
+    assert compare(report(), candidate)['decision'] == 'inconclusive'
