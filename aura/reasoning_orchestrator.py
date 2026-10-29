@@ -6,6 +6,7 @@ Web search is opt-in, local SearXNG only, and web snippets are NEVER trusted fac
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -137,6 +138,15 @@ class ReasoningOrchestrator:
             meta['limitations'].append('Plano de pesquisa indisponível; usada pergunta original')
         meta['research_queries'] = queries
 
+        # Start independent web I/O while local retrieval is running.
+        # Both paths remain opt-in/bounded and evidence is validated below.
+        external_task = None
+        if self.external and self.config.max_web_evidence:
+            external_task = asyncio.gather(
+                *(self.external.search(query, limit=self.config.max_web_evidence)
+                  for query in queries[:2]),
+                return_exceptions=True,
+            )
         evidence = []
         try:
             books = await self.research.investigate(queries, encoder=encoder,
@@ -152,15 +162,9 @@ class ReasoningOrchestrator:
         except (ValueError, TypeError, KeyError) as ex:
             meta['limitations'].append('Não foi possível pesquisar os livros: ' + type(ex).__name__)
 
-        if self.external and self.config.max_web_evidence:
-            # Independent lookups overlap network wait; process results in original
-            # query order to keep evidence selection deterministic.
-            import asyncio
-            batches = await asyncio.gather(
-                *(self.external.search(query, limit=self.config.max_web_evidence)
-                  for query in queries[:2]),
-                return_exceptions=True,
-            )
+        if external_task is not None:
+            # Gather already started before book retrieval. Process in query order.
+            batches = await external_task
             seen_ids = {item['id'] for item in evidence}
             web_count = 0
             for raw in batches:
