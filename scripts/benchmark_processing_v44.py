@@ -22,6 +22,10 @@ import tempfile
 import time
 import types
 
+# Executing scripts/foo.py sets sys.path[0] to scripts/, not repository root.
+# Import the exact checked-out aura package for the optimized side.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 BASELINE = "0ad21c90c79ceef069ef861abf35a10e3f9f1bc4"
 RESULT_PATH = Path("benchmark_results_v44.json")
 
