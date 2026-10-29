@@ -41,3 +41,30 @@ def test_stream_requires_terminal_event():
             return await collect_json_stream(client,"http://localhost:11434/api/chat",{"model":"test"})
     with pytest.raises(ValueError,match="terminal"):
         asyncio.run(run())
+
+
+def test_stream_reports_ollama_durations():
+    def handler(request):
+        terminal = {"message":{"content":'{"ok":true}'},"done":True,
+                    "total_duration":80000000,"load_duration":10000000,
+                    "prompt_eval_duration":20000000,"eval_duration":40000000,
+                    "eval_count":4}
+        return httpx.Response(200,text=json.dumps(terminal)+"\n")
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await collect_json_stream(client,"http://localhost:11434/api/chat",{"model":"test"})
+    answer, metrics = asyncio.run(run())
+    assert answer == {"ok": True}
+    assert metrics["total_ms"] == 80
+    assert metrics["generation_ms"] == 40
+    assert metrics["tokens_per_second"] == 100
+
+
+def test_stream_rejects_error_event():
+    def handler(request):
+        return httpx.Response(200,text=json.dumps({"error":"model not available"})+"\n")
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await collect_json_stream(client,"http://localhost:11434/api/chat",{"model":"test"})
+    with pytest.raises(ValueError, match="error"):
+        asyncio.run(run())
