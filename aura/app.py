@@ -84,6 +84,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         llm = engine.__dict__.get('llm')
         if llm is not None:
             await llm.close()
+        # Both inference and embedding transports are lazy: shut down only
+        # the instances that were actually activated during this lifespan.
+        memory = engine.__dict__.get('memory')
+        if memory is not None:
+            await memory.close()
 
     app = FastAPI(title='Expecto Ultimate API', version='3.3.0-fact-verification', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
