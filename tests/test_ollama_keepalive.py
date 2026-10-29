@@ -45,3 +45,24 @@ def test_ollama_adapter_one_shot_closes_client(monkeypatch):
     adapter = OllamaMultiLayerAdapter("http://127.0.0.1:11434", "test")
     asyncio.run(adapter("one-shot"))
     assert len(created) == 1 and created[0].closed
+
+
+def test_planning_has_smaller_generation_budget(monkeypatch):
+    budgets = []
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        async def post(self, url, json):
+            budgets.append(json["options"]["num_predict"])
+            return httpx.Response(200, json={"message":{"content":'{}'}},
+                                  request=httpx.Request("POST", url))
+        async def aclose(self):
+            pass
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    async def run():
+        adapter = OllamaMultiLayerAdapter("http://127.0.0.1:11434", "test")
+        async with adapter:
+            await adapter.plan("plan")
+            await adapter("answer")
+    asyncio.run(run())
+    assert budgets == [192, 950]
