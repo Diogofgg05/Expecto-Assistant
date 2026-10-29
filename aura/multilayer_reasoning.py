@@ -143,9 +143,26 @@ class OllamaMultiLayerAdapter:
         self.base_url=base_url.rstrip('/')
         self.model=model
 
+    async def __aenter__(self):
+        import httpx
+        if getattr(self, '_client', None) is not None:
+            raise RuntimeError('Ollama adapter context already active')
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=3.0))
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        client, self._client = self._client, None
+        await client.aclose()
+
     async def __call__(self, prompt: str) -> dict:
         import httpx
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0,connect=3.0)) as client:
+        # A context-managed adapter reuses HTTP connections across LLM calls.
+        # Outside the context, retain the previous one-shot contract.
+        client = getattr(self, '_client', None)
+        owned = client is None
+        if owned:
+            client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=3.0))
+        try:
             response=await client.post(self.base_url+'/api/chat',json={
                 'model':self.model,'stream':False,'format':'json',
                 'options':{'temperature':0,'num_predict':950,'num_ctx':8192},
@@ -154,3 +171,6 @@ class OllamaMultiLayerAdapter:
             })
             response.raise_for_status()
             return _decode(response.json()['message']['content'])
+        finally:
+            if owned:
+                await client.aclose()
