@@ -223,6 +223,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Constructing the LLM chiplet is local-only and does not load Ollama weights.
         return engine.llm.compute_status()
 
+    @app.get('/api/performance/status')
+    async def performance_status():
+        """Read-only, aggregate-only. Never requests Ollama or stores prompts."""
+        return engine.llm.performance.status()
+
     @app.get('/api/chiplets')
     async def chiplet_metrics():
         """Read-only service-status snapshot; never activates standby modules."""
