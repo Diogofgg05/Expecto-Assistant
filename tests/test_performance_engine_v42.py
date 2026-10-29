@@ -128,7 +128,10 @@ def test_no_change_to_balanced_or_personal_requests(tmp_path, monkeypatch):
         legacy.resource_guard.sampler=lambda:HostMemory(8192,100)
         assert await legacy.reply("O que é o meu projeto?") == "Resposta"
         assert legacy.resource_guard.status()["probes"] == 0
-        assert sent[-1]["options"]["num_ctx"] == 3072
+        # Even Legacy must preserve the primary model context limit when
+        # the prompt requires personal memory or complex reasoning.
+        assert "num_ctx" not in sent[-1]["options"]
+        assert "num_batch" not in sent[-1]["options"]
         assert sent[-1]["options"]["num_predict"] == 450
         await legacy.close()
     asyncio.run(run())
