@@ -24,6 +24,10 @@ class Message(BaseModel):
     session_id: str = Field(default="", max_length=64)
 
 
+class CodeInspectionRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=25000)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = Database(settings.data_dir / 'aura.sqlite3', passphrase=settings.database_passphrase,
@@ -103,6 +107,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health():
         return {'status': 'ok', 'version': '3.3.0-fact-verification',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
+
+    @app.post('/api/code/inspect')
+    async def inspect_code(payload: CodeInspectionRequest):
+        # Read-only AST inspection; never import/execute or persist submitted code.
+        from .code_inspection import inspect_python
+        try:
+            return await asyncio.to_thread(inspect_python, payload.code)
+        except (ValueError, RecursionError):
+            raise HTTPException(status_code=422, detail='Código demasiado complexo para análise segura')
 
     @app.post('/api/command')
     async def command(payload: Message):

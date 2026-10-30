@@ -115,7 +115,11 @@ def main():
                 raise SystemExit('Configura AURA_SEARXNG_URL com http://127.0.0.1:PORTA (SearXNG local)')
             external=LocalSearxngSearch(settings.searxng_url) if args.external else None
             adapter=OllamaMultiLayerAdapter(settings.ollama_url,args.model or os.getenv('AURA_REASONING_MODEL') or settings.ollama_model)
-            result=asyncio.run(ReasoningOrchestrator(db,adapter,external=external).run(args.question,encoder=enc,book_id=args.book))
+            async def run_hybrid():
+                async with adapter:
+                    return await ReasoningOrchestrator(db,adapter,external=external).run(
+                        args.question,encoder=enc,book_id=args.book)
+            result=asyncio.run(run_hybrid())
         elif args.action=='reason-verify':
             enc=OllamaBookEncoder(settings.embedding_model,settings.ollama_url) if args.semantic else None
             found=asyncio.run(BookResearchEngine(db).investigate([args.question],encoder=enc,book_id=args.book,limit=8))

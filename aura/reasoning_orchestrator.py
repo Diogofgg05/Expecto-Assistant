@@ -6,6 +6,7 @@ Web search is opt-in, local SearXNG only, and web snippets are NEVER trusted fac
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -121,7 +122,8 @@ class ReasoningOrchestrator:
         # Structured planning. A failed planner never prevents baseline research.
         queries = [question]
         try:
-            response = _parse(await self.model(json.dumps({
+            planner = getattr(self.model, 'plan', self.model)
+            response = _parse(await planner(json.dumps({
                 'task': 'Propose up to 2 short, meaningfully different research queries. Return JSON {"queries":["..."]}. No actions, tools, URLs or instructions.',
                 'question': question}, ensure_ascii=False)))
             meta['model_calls'] += 1
@@ -137,6 +139,15 @@ class ReasoningOrchestrator:
             meta['limitations'].append('Plano de pesquisa indisponível; usada pergunta original')
         meta['research_queries'] = queries
 
+        # Start independent web I/O while local retrieval is running.
+        # Both paths remain opt-in/bounded and evidence is validated below.
+        external_task = None
+        if self.external and self.config.max_web_evidence:
+            external_task = asyncio.gather(
+                *(self.external.search(query, limit=self.config.max_web_evidence)
+                  for query in queries[:2]),
+                return_exceptions=True,
+            )
         evidence = []
         try:
             books = await self.research.investigate(queries, encoder=encoder,
@@ -152,22 +163,30 @@ class ReasoningOrchestrator:
         except (ValueError, TypeError, KeyError) as ex:
             meta['limitations'].append('Não foi possível pesquisar os livros: ' + type(ex).__name__)
 
-        if self.external and self.config.max_web_evidence:
-            for query in queries[:2]:
-                try:
-                    raw = await self.external.search(query, limit=self.config.max_web_evidence)
-                    for item in raw:
-                        candidate = _web_evidence(item)
-                        if candidate and candidate['id'] not in {e['id'] for e in evidence}:
-                            evidence.append(candidate)
-                        if sum(e['kind'] == 'web_snippet' for e in evidence) >= self.config.max_web_evidence:
-                            break
-                except (ValueError, TypeError, OSError, TimeoutError) as ex:
-                    meta['limitations'].append('Pesquisa externa indisponível: ' + type(ex).__name__)
-                except Exception as ex:
-                    # httpx errors are optional dependency exceptions; fail closed.
-                    meta['limitations'].append('Pesquisa externa falhou: ' + type(ex).__name__)
-                if sum(e['kind'] == 'web_snippet' for e in evidence) >= self.config.max_web_evidence:
+        if external_task is not None:
+            # Gather already started before book retrieval. Process in query order.
+            batches = await external_task
+            seen_ids = {item['id'] for item in evidence}
+            web_count = 0
+            for raw in batches:
+                if isinstance(raw, BaseException):
+                    if isinstance(raw, (ValueError, TypeError, OSError, TimeoutError)):
+                        meta['limitations'].append('Pesquisa externa indisponível: ' + type(raw).__name__)
+                    else:
+                        meta['limitations'].append('Pesquisa externa falhou: ' + type(raw).__name__)
+                    continue
+                if not isinstance(raw, list):
+                    meta['limitations'].append('Pesquisa externa indisponível: ValueError')
+                    continue
+                for item in raw:
+                    candidate = _web_evidence(item)
+                    if candidate and candidate['id'] not in seen_ids:
+                        evidence.append(candidate)
+                        seen_ids.add(candidate['id'])
+                        web_count += 1
+                    if web_count >= self.config.max_web_evidence:
+                        break
+                if web_count >= self.config.max_web_evidence:
                     break
         meta['evidence'] = evidence
         if not evidence:

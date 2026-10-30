@@ -57,6 +57,32 @@ class AuraEngine:
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
 
+        # Explicit read-only programming assistance, before the general LLM
+        # router. User code is data; it is never executed or persisted here.
+        inspection = re.match(
+            r'^(?:analisa|verifica|revê|revisa)\s+(?:o\s+)?c[oó]digo(?:\s+python)?\s*:\s*(.+)$',
+            original, flags=re.I | re.S)
+        if inspection:
+            from .code_inspection import inspect_python
+            source = inspection.group(1).strip()
+            fenced = re.fullmatch(r'```(?:python|py)?\s*\n(.*?)\n```', source,
+                                  flags=re.I | re.S)
+            if fenced:
+                source = fenced.group(1)
+            try:
+                report = await asyncio.to_thread(inspect_python, source)
+            except (ValueError, RecursionError):
+                return reply('Código demasiado extenso ou complexo para análise estática segura.',
+                             speak=False)
+            count = len(report['findings'])
+            if not report['valid_syntax']:
+                summary = 'Encontrei um erro de sintaxe Python. Consulte a linha no relatório.'
+            elif count:
+                summary = f'Identifiquei {count} possíveis problemas no código Python. Nenhum código foi executado.'
+            else:
+                summary = 'Não detetei problemas nas regras verificadas. Isto não garante correção ou segurança.'
+            return reply(summary, data={'code_inspection': report}, speak=False)
+
         # v5.1: Reflection is opt-in; feedback notes are never treated as instructions.
         m=re.match(r'^feedback explicacao (curta|longa|boa)\s*:\s*(.*)$',key)
         if m:

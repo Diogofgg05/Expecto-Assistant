@@ -1,5 +1,6 @@
 """Cross-book research is a retrieval aid, never autonomous truth verification."""
 import asyncio
+import hashlib
 from pathlib import Path
 import pytest
 from aura.database import Database
@@ -18,7 +19,7 @@ def test_cross_book_coverage_and_missing_queries(tmp_path):
     db=Database(tmp_path/'test.sqlite3',require_encryption=False)
     engine=BookResearchEngine(db)
     cases={
-      'matrizes inversas':[{'passage_id':'p1','book_id':'b1','title':'Álgebra','page':12,'text':'Matrizes inversas exigem determinante não nulo.', 'text_hash':'h1','score':1}, {'passage_id':'p2','book_id':'b2','title':'Matemática','page':8,'text':'A matriz inversa existe quando a transformação é invertível.','text_hash':'h2','score':0.5}],
+      'matrizes inversas':[{'passage_id':'p1','book_id':'b1','title':'Álgebra','page':12,'text':'Matrizes inversas exigem determinante não nulo.', 'text_hash':hashlib.sha256('Matrizes inversas exigem determinante não nulo.'.encode()).hexdigest(),'score':1}, {'passage_id':'p2','book_id':'b2','title':'Matemática','page':8,'text':'A matriz inversa existe quando a transformação é invertível.','text_hash':hashlib.sha256('A matriz inversa existe quando a transformação é invertível.'.encode()).hexdigest(),'score':0.5}],
       'historia do computador':[],
     }
     async def fake_search(question,**kwargs):return cases.get(question,[])
