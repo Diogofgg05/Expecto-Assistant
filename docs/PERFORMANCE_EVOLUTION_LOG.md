@@ -239,3 +239,30 @@ O módulo estático `code_inspection.inspect_python` não tinha entrada pela API
 1. Executar todos os testes, em particular `pytest tests/test_code_inspect_api.py tests/test_code_inspect_command.py tests/test_rag_retrieval_metrics.py tests/test_book_semantics_v38.py -q`.
 2. Construir conjunto de perguntas gold reais do utilizador para medir recall@5, precision@5 e MRR antes/depois.
 3. Integrar relatório estruturado de programação na interface holográfica sem criar botões ou páginas permanentes.
+
+## 2026-10-30 — Etapa 15: revisão Python com aliases + filtragem hash no RAG (candidata)
+
+### Diagnóstico
+- O analisador `aura/code_inspection.py` reconhecia apenas nomes comuns de `subprocess` e `pickle`; imports por alias podiam contornar os avisos.
+- `BookSemanticIndex.search` comparava embeddings com o hash guardado na BD, mas não recalculava o hash do próprio texto antes de entregar passagens. Uma fonte inconsistente podia ocupar um lugar no top-k.
+
+### Implementação
+- `aura/code_inspection.py`: resolução conservadora de imports explícitos e aliases para `subprocess.run/Popen/call/check_output/check_call`, `pickle.load(s)`, `os.system/popen`, `eval/exec`. Acrescenta coluna e sugestão de mitigação. **Não executa código.**
+- `aura/book_semantics.py`: verifica SHA-256 do texto de cada passagem antes de adicionar aos resultados escolhidos; fonte adulterada não ocupa slot de `limit`.
+- `tests/test_code_inspection_aliases.py`: cinco testes acrescentados.
+- `tests/test_rag_hash_topk.py`: um teste acrescentado, com resultados SQLite simulados e hash adulterado.
+- Sem novas dependências, sem migrações da BD, sem alteração à interface ou modelos.
+
+### Validação e limitações
+- Código e testes submetidos na branch de otimização do GitHub.
+- **Os novos testes ainda não foram executados/confirmados neste ambiente**, nem foi executada a suíte completa. Ainda não há ganho medido de latência/precisão real.
+- Resolução de aliases é heurística; não segue reatribuições, imports dinâmicos nem chamadas aninhadas. A inspeção estática não garante que o código seja seguro.
+- A verificação SHA-256 acrescenta trabalho linear por passagem; medir o custo e o efeito no hit@k/recall@k com dados reais antes de aprovar.
+
+### Decisão
+Candidata, pendente de validação e revisão humana. Branch isolada de `main`.
+
+### Próximas prioridades
+1. Executar testes antigos e novos e confirmar CI/sem regressões.
+2. Avaliar gold datasets de RAG com hit@k, recall@k, MRR e latência.
+3. Melhorar a análise de código com regras de fluxo de dados explicitamente verificadas, evitando falsos positivos.
