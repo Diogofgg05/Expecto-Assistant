@@ -175,6 +175,9 @@ class BookSemanticIndex:
         chosen=[]
         for pid in ordered:
             p=passages[pid]
+            # A stored hash may be stale or tampered; reject before occupying top-k.
+            if hashlib.sha256(p['text'].encode('utf-8')).hexdigest() != p['text_hash']:
+                continue
             # adjacent chunks overlap; suppress near duplicate results on same page.
             if any(x['book_id']==p['book_id'] and x['page']==p['page'] and
                    len(_words(x['text']) & _words(p['text']))/max(1,len(_words(p['text'])))>0.85 for x in chosen):
