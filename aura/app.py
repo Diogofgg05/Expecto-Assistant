@@ -164,7 +164,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     try:
                         queue.put_nowait(None)
                     except asyncio.QueueFull:
-                        pass
+                        # Ensure termination even when consumer is slower than Ollama.
+                        # At most one provisional token is lost; the final text is complete.
+                        queue.get_nowait()
+                        queue.put_nowait(None)
 
             task = asyncio.create_task(work())
             try:
