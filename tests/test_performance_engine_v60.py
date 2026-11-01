@@ -102,3 +102,9 @@ def test_config_mode_from_environment(monkeypatch):
     assert Settings.from_env().performance_mode == 'balanced'
     monkeypatch.setenv('AURA_PERFORMANCE_MODE', 'bad')
     assert Settings.from_env().performance_mode == 'balanced'
+
+
+def test_global_context_budget_never_overflows():
+    for n in (1, 10, 40, 64, 100, 250, 16000):
+        clipped = bound_context('private-context\\n'*3000, n)
+        assert len(clipped) <= n
