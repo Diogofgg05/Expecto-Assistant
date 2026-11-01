@@ -1,4 +1,4 @@
-/* EXPECTO voice 5.4 — progressive sentence TTS and reliable interruption.
+/* EXPECTO voice 5.6 — progressive sentence TTS and reliable interruption.
    Browser Web Speech is a fallback, not a local neural TTS engine. */
 (() => {
   'use strict';
@@ -11,6 +11,30 @@
   let pending = '', accepted = 0, spoken = 0;
   let queue = [], handlers = {};
   let localTTS = false, localAbort = null, localAudio = null, localURL = '';
+  let prefetched = null, lastPlaybackEnd = 0;
+  const now = () => window.performance?.now?.() ?? Date.now();
+  // One speculative Piper request at most. The backend serializes model work.
+  function requestWav(text) {
+    const controller = new AbortController();
+    const begun = now();
+    const promise = fetch('/api/voice/synthesize', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text}), signal: controller.signal
+    }).then(response => {
+      if (!response.ok) throw new Error('Local voice synthesis failed');
+      return response.blob();
+    }).then(blob => ({blob, synthesisMs: Math.round(now() - begun)}));
+    return {text, controller, promise};
+  }
+  function preloadNext() {
+    if (!localTTS || !active || !queue.length || prefetched) return;
+    // Preserve order: at most one cached segment is prepared ahead.
+    const text = queue[0];
+    prefetched = requestWav(text);
+    prefetched.promise.catch(() => {}); // Failure is handled by playback fallback.
+    report('prefetch', {characters: text.length});
+  }
+
 
   function report(type, details = {}) {
     try {
@@ -27,6 +51,8 @@
   function cancel() {
     epoch += 1;
     localAbort?.abort(); localAbort = null;
+    prefetched?.controller.abort(); prefetched = null;
+    lastPlaybackEnd = 0;
     if(localAudio){localAudio.pause();localAudio.src='';localAudio=null;}
     if(localURL){URL.revokeObjectURL(localURL);localURL='';}
     active = false; finished = false; uttering = false; started = false;
@@ -46,55 +72,68 @@
       return;
     }
     const text = queue.shift();
-    if (localTTS) { void speakLocal(text, token); return; }
+    if (localTTS) {
+      // If it was prepared while the previous segment was playing, reuse it.
+      const ready = prefetched?.text === text ? prefetched : null;
+      if (ready) prefetched = null;
+      void speakLocal(text, token, ready);
+      preloadNext();
+      return;
+    }
     speakBrowser(text, token);
   }
-  async function speakLocal(text, token) {
+  async function speakLocal(text, token, ready = null) {
     uttering = true;
-    const controller = new AbortController();localAbort = controller;
+    // A previously started request can be reused instead of being duplicated.
+    const operation = ready || requestWav(text);
+    const controller = operation.controller;
+    localAbort = controller;
     try {
-      const response = await fetch('/api/voice/synthesize', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({text}), signal: controller.signal
-      });
-      if (!response.ok) throw new Error('Local voice synthesis failed');
-      const audioBlob = await response.blob();
-      if (token !== epoch || !active) return;
-      localURL = URL.createObjectURL(audioBlob);
+      const {blob, synthesisMs} = await operation.promise;
+      if (token !== epoch || !active || controller.signal.aborted) return;
+      localURL = URL.createObjectURL(blob);
       const audio = new Audio(localURL);
       localAudio = audio;
       audio.onplay = () => {
         if (token !== epoch || !active) return;
         if (!started) { started = true; handlers.onStart?.(); }
-        report('start', {text, engine:'piper'});
+        report('start', {
+          text, engine:'piper', synthesisMs,
+          gapMs:lastPlaybackEnd ? Math.round(now() - lastPlaybackEnd) : null,
+          preloaded: !!ready
+        });
+        preloadNext();
       };
       let completed = false;
-      function finishSegment() {
+      function complete() {
         if (completed || token !== epoch || !active) return;
         completed = true;
         localAudio = null;
         if(localURL){URL.revokeObjectURL(localURL);localURL='';}
         localAbort = null;
         uttering = false; spoken += text.length;
+        lastPlaybackEnd = now();
         report('segment_end',{text,engine:'piper'});
         pump(token);
       }
-      audio.onended = finishSegment;
+      audio.onended = complete;
       audio.onerror = () => {
-        if(token !== epoch || !active) return;
+        if (completed || token !== epoch || !active) return;
+        completed = true;
         localAudio = null;
         if(localURL){URL.revokeObjectURL(localURL);localURL='';}
         localAbort = null; uttering = false;
+        // A failed or unplayable WAV must not block the rest of the answer.
         speakBrowser(text, token);
       };
       await audio.play();
     } catch (err) {
       if(token !== epoch || !active || controller.signal.aborted) return;
-      // Browser autoplay restrictions and Piper failures retain Web Speech.
       if(localURL){URL.revokeObjectURL(localURL);localURL='';}
       localAudio = null;localAbort = null;uttering = false;
-      speakBrowser(text,token);
+      // No speech server / blocked autoplay: use the browser as fallback.
+      if (synth) speakBrowser(text,token);
+      else {spoken += text.length; pump(token);}
     }
   }
   function speakBrowser(text, token) {
@@ -151,11 +190,19 @@
       pending = pending.slice(count).trimStart();
       if (segment) queue.push(segment);
     }
+    if (uttering) preloadNext();
     pump(epoch);
   }
   const api = {
     get supported() { return (!!synth && !!window.SpeechSynthesisUtterance) || localTTS; },
-    configure(options = {}) { localTTS = !!options.localTTS; },
+    configure(options = {}) {
+      const enabled = !!options.localTTS;
+      if (enabled !== localTTS) {
+        prefetched?.controller.abort(); prefetched = null;
+      }
+      localTTS = enabled;
+      if (active && uttering) preloadNext();
+    },
     get active() { return active; },
     get queuedSegments() { return queue.length; },
     start(callbacks = {}) {
