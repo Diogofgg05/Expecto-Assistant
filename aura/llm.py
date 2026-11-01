@@ -29,6 +29,7 @@ class Ollama:
         self.memory = memory or MemoryEngine(settings, db)
         self.metrics = PerformanceMonitor()
         self._client = None
+        self._missing_models = set()
 
     def _transport(self):
         if self._client is None or self._client.is_closed:
@@ -62,10 +63,13 @@ class Ollama:
         profile = choose_profile(question, history, mode=self.settings.performance_mode)
         if profile.retrieve_personal:
             # Independent retrievals can share the wait time.
-            notes, episodes = await asyncio.gather(
-                self.memory.recall(question, 8),
-                self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5),
-            )
+            # Both retrievals often embed the exact same query. Share one
+            # in-flight embedding within this request and drop it afterwards.
+            async with self.memory.query_scope():
+                notes, episodes = await asyncio.gather(
+                    self.memory.recall(question, 8),
+                    self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5),
+                )
         else:
             # Only explicitly self-contained general definitions use this path.
             notes, episodes = [], []
@@ -142,47 +146,75 @@ class Ollama:
         messages.append({'role': 'user', 'content': question[:2000]})
         chunks = []
         usage = {}
+        preferred = (self.settings.ollama_fast_model if profile.name == 'fast'
+                     else self.settings.ollama_deep_model if profile.name == 'deep'
+                     else '')
+        base_model = self.settings.ollama_model
+        chosen = preferred if preferred and preferred not in self._missing_models else base_model
+        used_model = chosen
         try:
-            if True:
-                client = self._transport()
-                payload = {
-                    'model': self.settings.ollama_model,
-                    'messages': messages,
-                    'stream': on_token is not None,
-                    'keep_alive': self.settings.ollama_keep_alive,
-                    'options': {'num_predict': profile.max_predict, 'temperature': 0.35 if profile.name == 'fast' else 0.45},
-                }
-                if on_token is None:
+            client = self._transport()
+            payload = {
+                'model': chosen,
+                'messages': messages,
+                'stream': on_token is not None,
+                'keep_alive': self.settings.ollama_keep_alive,
+                'options': {
+                    'num_predict': profile.max_predict,
+                    'temperature': 0.35 if profile.name == 'fast' else 0.45,
+                },
+            }
+            # Disable hidden thinking only for self-contained FAST definitions.
+            # Other profiles leave the model's default reasoning behavior intact.
+            if profile.name == 'fast':
+                payload['think'] = False
+            # A missing optional fast/deep model must not break the chat.
+            # Remember failures only for the lifetime of this process.
+            candidates = [chosen] + ([base_model] if chosen != base_model else [])
+            if on_token is None:
+                for model in candidates:
+                    used_model = model
+                    payload['model'] = model
                     resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
+                    if resp.status_code == 404 and model != base_model:
+                        self._missing_models.add(model)
+                        continue
                     if resp.status_code == 404:
-                        return (f'O modelo {self.settings.ollama_model} não está instalado. '
-                                f'Executa: ollama pull {self.settings.ollama_model}.')
+                        return (f'O modelo {base_model} não está instalado. '
+                                f'Executa: ollama pull {base_model}.')
                     resp.raise_for_status()
                     usage = resp.json()
                     answer = usage.get('message', {}).get('content', '').strip()
                     completed = bool(answer)
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
-                # Ollama emits newline-delimited JSON. Relay each generated token
-                # immediately; keep exact concatenated text for memory capture.
-                async with client.stream('POST', self.settings.ollama_url + '/api/chat',
-                                         json=payload) as resp:
-                    if resp.status_code == 404:
-                        return (f'O modelo {self.settings.ollama_model} não está instalado. '
-                                f'Executa: ollama pull {self.settings.ollama_model}.')
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line.strip():
+            else:
+                for model in candidates:
+                    used_model = model
+                    payload['model'] = model
+                    async with client.stream('POST', self.settings.ollama_url + '/api/chat',
+                                             json=payload) as resp:
+                        if resp.status_code == 404 and model != base_model:
+                            self._missing_models.add(model)
                             continue
-                        event = json.loads(line)
-                        if event.get('done'): usage = event
-                        if event.get('error'):
-                            raise ValueError('Ollama streaming failed')
-                        piece = event.get('message', {}).get('content', '')
-                        if isinstance(piece, str) and piece:
-                            chunks.append(piece)
-                            if first_token_at is None:
-                                first_token_at = time.perf_counter()
-                            await on_token(piece)
+                        if resp.status_code == 404:
+                            return (f'O modelo {base_model} não está instalado. '
+                                    f'Executa: ollama pull {base_model}.')
+                        resp.raise_for_status()
+                        async for line in resp.aiter_lines():
+                            if not line.strip():
+                                continue
+                            event = json.loads(line)
+                            if event.get('error'):
+                                raise ValueError('Ollama streaming failed')
+                            if event.get('done'):
+                                usage = event
+                            piece = event.get('message', {}).get('content', '')
+                            if isinstance(piece, str) and piece:
+                                chunks.append(piece)
+                                if first_token_at is None:
+                                    first_token_at = time.perf_counter()
+                                await on_token(piece)
+                    break
                 completed = bool(chunks)
                 return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
         except httpx.ConnectError:
@@ -206,5 +238,5 @@ class Ollama:
                 total_ms=(time.perf_counter() - started) * 1000,
                 ttft_ms=((first_token_at - started) * 1000 if first_token_at is not None else None),
                 context_chars=context_chars, ok=completed,
-                provider=usage,
+                provider=usage, model=used_model,
             )

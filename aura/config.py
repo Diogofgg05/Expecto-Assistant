@@ -30,6 +30,8 @@ class Settings:
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'hermes3'
     ollama_keep_alive: str = '10m'
+    ollama_fast_model: str = ''
+    ollama_deep_model: str = ''
     performance_mode: str = 'balanced'
     voice_whisper_binary: str = ''
     voice_whisper_model: str = ''
@@ -67,6 +69,8 @@ class Settings:
             # 0m saves RAM, 10m avoids costly model reload between turns.
             ollama_keep_alive=(lambda value: value if re.fullmatch(r'(?:0|[1-9][0-9]?)m', value)
                                else '10m')(os.getenv('AURA_OLLAMA_KEEP_ALIVE', '10m').strip()),
+            ollama_fast_model=os.getenv('AURA_OLLAMA_FAST_MODEL', '').strip(),
+            ollama_deep_model=os.getenv('AURA_OLLAMA_DEEP_MODEL', '').strip(),
             performance_mode=(lambda value: value if value in ('balanced', 'conservative', 'off')
                               else 'balanced')(os.getenv('AURA_PERFORMANCE_MODE', 'balanced').strip().lower()),
             voice_whisper_binary=os.getenv('AURA_VOICE_WHISPER_BINARY', ''),

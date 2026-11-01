@@ -67,8 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with suppress(asyncio.CancelledError):
                 await task
         await engine.llm.aclose()
+        await engine.memory.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='6.4.0', lifespan=lifespan)
+    app = FastAPI(title='Expecto Ultimate API', version='6.5.0', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
@@ -112,7 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '6.4.0',
+        return {'status': 'ok', 'version': '6.5.0',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
     def finalize_command(payload: Message, result: dict) -> dict:

@@ -1,6 +1,6 @@
-# EXPECTO Assistant 6.4.0 — Voice & Ultra Performance
+# EXPECTO Assistant 6.5.0 — Adaptive Inference & Voice
 
-**Versão integrada na main.** A versão 6.4 reúne as melhorias anteriormente
+**Versão 6.5 em validação no PR.** A versão 6.4 integrou as melhorias anteriormente
 desenvolvidas nos PRs #11–#15: respostas Ollama em streaming, perfis de
 processamento, contexto limitado, Whisper persistente opcional, Piper e
 captura de áudio melhorada. As ligações HTTP ao Ollama são reutilizadas
@@ -14,6 +14,11 @@ local exigem instalação e configuração opcionais dos modelos.
 Configuração: [voz local](docs/LOCAL_VOICE_55.md),
 [Whisper e Ollama](docs/WHISPER_OLLAMA_61.md),
 [desempenho](docs/ULTRA_PERFORMANCE_ENGINE_60.md).
+A atualização 6.5 acrescenta reutilização de embeddings dentro da mesma pergunta
+(com teste 2 → 1 pedidos duplicados), seleção opcional de modelos FAST/DEEP
+e um [benchmark A/B local](docs/ADAPTIVE_INFERENCE_65.md).
+Ainda não existem tempos reais recolhidos no computador do utilizador.
+
 O OpenJarvis inspirou a reutilização de ligações HTTP; não foi copiado código
 do projeto externo.
 

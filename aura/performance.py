@@ -93,7 +93,7 @@ class PerformanceMonitor:
         self._rows = deque(maxlen=64)
 
     def record(self, *, profile: str, prep_ms: float, total_ms: float,
-               ttft_ms: float | None, context_chars: int, ok: bool, provider=None):
+               ttft_ms: float | None, context_chars: int, ok: bool, provider=None, model: str = ''):
         provider = provider if isinstance(provider, dict) else {}
         decode_count = provider.get('eval_count')
         decode_ns = provider.get('eval_duration')
@@ -102,7 +102,7 @@ class PerformanceMonitor:
                      if isinstance(decode_count, (int, float)) and decode_count >= 0
                      and isinstance(decode_ns, (int, float)) and decode_ns > 0 else None)
         self._rows.append({
-            'profile': profile, 'prep_ms': round(max(0, prep_ms), 1),
+            'profile': profile, 'model': model[:100], 'prep_ms': round(max(0, prep_ms), 1),
             'total_ms': round(max(0, total_ms), 1),
             'ttft_ms': round(ttft_ms, 1) if ttft_ms is not None else None,
             'context_chars': max(0, context_chars),
@@ -124,6 +124,7 @@ class PerformanceMonitor:
             'sample_count': len(rows),
             'capacity': 64,
             'profile_counts': dict(Counter(row['profile'] for row in rows)),
+            'model_counts': dict(Counter(row['model'] for row in rows if row['model'])),
             'failed_requests': sum(not row['ok'] for row in rows),
             'latency_ms': {
                 'preparation': distribution('prep_ms'),
