@@ -50,7 +50,7 @@ class AuraEngine:
         self.reflection = ReflectionEngine(db)
         self.llm = Ollama(settings, db, self.memory)
 
-    async def command(self, original: str, history: list[dict] | None = None) -> dict:
+    async def command(self, original: str, history: list[dict] | None = None, *, on_token=None) -> dict:
         original = original.strip()
         original = re.sub(r'^(?:aura|expecto)[,\s:]+', '', original, flags=re.I).strip()
         key = normalized(original).rstrip('.!?')
@@ -733,8 +733,8 @@ class AuraEngine:
             result['capture'] = True
             return result
 
-        text = await self.llm.reply(original, history)
-        result = reply(text, speak=len(text) < 500)
+        text = await self.llm.reply(original, history, on_token=on_token)
+        result = reply(text, speak=len(text) < 500 or on_token is not None)
         result['capture'] = True  # Save only actual conversations, never CRUD/control commands.
         return result
 
