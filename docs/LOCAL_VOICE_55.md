@@ -101,3 +101,60 @@ sobretudo em hardware antigo. A melhoria reduz a pausa percebida quando a
 síntese da próxima frase termina antes de acabar a anterior. Os ganhos reais
 dependem do CPU, modelo e tamanho dos segmentos e não foram medidos no PC
 do utilizador.
+
+
+## EXPECTO 5.7 — Piper persistente em memória
+
+Agora é possível reutilizar a **mesma sessão ONNX do Piper** para gerar várias
+frases, evitando carregar o modelo e iniciar um processo em cada síntese.
+
+### Ativação (opcional)
+
+Instala o pacote Piper Python no ambiente que executa o backend:
+
+```powershell
+python -m pip install piper-tts
+```
+
+Mantém o modelo `.onnx` e a configuração `.onnx.json` no mesmo diretório.
+Configura, no `.env`:
+
+```ini
+AURA_VOICE_PIPER_MODEL=C:/tools/piper/voices/<modelo_portugues>.onnx
+AURA_VOICE_PIPER_INPROCESS=true
+```
+
+Este modo **não exige o binário Piper CLI**. Quando é ativado, a importação da
+biblioteca é opcional: se o Python não tiver o pacote ou o ficheiro JSON
+estiver em falta, o sistema pode usar o binário Piper CLI (quando também
+configurado). Caso contrário, a saída vocal do navegador continua disponível.
+
+### Proteções e observabilidade
+
+- A voz é carregada **na primeira síntese**, não no arranque do Expecto.
+- Um `threading.Lock` protege o modelo partilhado mesmo quando o utilizador
+  interrompe o pedido HTTP. Cancelar uma coroutine não interrompe uma
+  inferência já iniciada numa thread Python; a próxima fica serializada.
+- O WAV sintetizado tem limite de 4 MiB, texto máximo de 240 caracteres, e
+  não é guardado em disco pelo modo Python.
+- `GET /api/voice/capabilities` indica `tts_mode` (`persistent`, `cli`
+  ou `disabled`) e `tts_model_loaded`. Não expõe caminhos privados.
+- Com `AURA_VOICE_PIPER_INPROCESS=false` (valor predefinido), o modo CLI da
+  versão anterior é mantido sem alteração.
+- Uma falha ao carregar o modelo só é tentada uma vez por instância do
+  servidor. Reiniciar a aplicação permite voltar a tentar.
+- Este modo pode aumentar significativamente a RAM ocupada e não garante menor
+  latência em todas as máquinas; fazer medições locais antes de o escolher
+  como predefinição.
+
+### Verificação
+
+```bash
+python -m pytest -q tests/test_piper_persistent_v57.py
+python -m pytest -q tests/test_local_voice_v55.py
+```
+
+Os testes verificam carregamento único, reutilização em pedidos concorrentes,
+WAVs, fallbacks e falta do pacote. Utilizam um **Piper falso**; não incluem
+benchmark de ONNX real nem medições da tua máquina. O Whisper.cpp continua
+como CLI por gravação e ainda não é mantido em memória.
