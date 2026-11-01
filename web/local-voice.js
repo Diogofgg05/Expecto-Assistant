@@ -7,12 +7,15 @@
   const MIN_VOICE_MS = 250;
   let current = null;
   let cached = null;
+  let persistent = false;
 
   async function capabilities() {
     if (cached !== null) return cached;
     try {
       const response = await fetch('/api/voice/capabilities', { cache: 'no-store' });
-      cached = response.ok && !!(await response.json()).local_stt;
+      const details = response.ok ? await response.json() : {};
+      persistent = !!details.persistent_stt;
+      cached = !!(details.local_stt || persistent);
     } catch (_) { cached = false; }
     return cached;
   }
@@ -53,6 +56,17 @@
     return new Blob([bytes], { type: 'audio/wav' });
   }
 
+  function sendPCM(session, block){
+    if(!session.socket || session.socket.readyState!==WebSocket.OPEN)return;
+    const rate=session.rate, ratio=rate/16000, len=Math.floor(block.length/ratio);
+    const output=new Int16Array(len);
+    for(let i=0;i<len;i++){
+      const sample=Math.max(-1,Math.min(1,block[Math.min(block.length-1,Math.floor(i*ratio))]));
+      output[i]=sample<0?Math.round(sample*32768):Math.round(sample*32767);
+    }
+    if(session.socket.bufferedAmount>128*1024)return;
+    session.socket.send(output.buffer);
+  }
   async function stopSession(session, send) {
     if (session.done) return;
     session.done = true;
@@ -62,8 +76,12 @@
     session.stream?.getTracks().forEach(track => track.stop());
     try { await session.context?.close(); } catch (_) {}
     if (current !== session) return;
-    if (!send || !session.voiced) { current = null; session.onStatus?.('idle'); return; }
+    if (!send || !session.voiced) { if(session.socket)session.socket.close();current = null; session.onStatus?.('idle'); return; }
     session.onStatus?.('transcribing');
+    if(session.socket){
+      if(session.socket.readyState === WebSocket.OPEN){session.socket.send(JSON.stringify({type:'flush'}));return;}
+      session.onError?.(new Error('Canal Whisper local interrompido.'));current=null;return;
+    }
     const wav = encodeWav(session.chunks, session.sampleCount, session.rate);
     session.chunks = []; // Free source PCM before network transcription.
     const signal = session.abort.signal;
@@ -92,7 +110,7 @@
       ...callbacks, abort: new AbortController(), done: false,
       stream: null, context: null, processor: null, source: null, muted: null,
       chunks: [], sampleCount: 0, voiced: false, voicedMs: 0, silenceSince: null,
-      rate: 48000
+      socket: null, rate: 48000
     };
     current = session;
     try {
@@ -115,6 +133,34 @@
       session.source.connect(session.processor);
       session.processor.connect(session.muted);
       session.muted.connect(session.context.destination);
+      if(persistent && typeof WebSocket !== 'undefined'){
+        const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(scheme + '//' + location.host + '/api/voice/continuous');
+        session.socket = socket;
+        socket.onmessage = event => {
+          if(current !== session || session.abort.signal.aborted)return;
+          try{
+            const data=JSON.parse(event.data);
+            if(data.type==='partial')session.onPartial?.(String(data.text||''));
+            if(data.type==='final'){
+              socket.close();session.socket=null;current=null;
+              session.onResult?.(String(data.text||'').trim());
+            }
+            if(data.type==='error'){
+              socket.close();session.socket=null;current=null;
+              session.onError?.(new Error('Whisper local: '+data.reason));
+            }
+          }catch(_){}
+        };
+        socket.onerror=()=>{
+          if(current===session){current=null;session.onError?.(new Error('Falha da ligação Whisper.'));}
+        };
+        socket.onopen=()=>{
+          if(current!==session){socket.close();return;}
+          for(const block of session.chunks)sendPCM(session,block);
+          session.chunks=[];
+        };
+      }
       session.onStatus?.('listening');
       let startedAt = performance.now();
       session.processor.onaudioprocess = event => {
@@ -122,7 +168,9 @@
         const chunk = event.inputBuffer.getChannelData(0);
         const limit = session.rate * MAX_SECONDS;
         const copy = Math.min(chunk.length, Math.max(0, limit - session.sampleCount));
-        if (copy) session.chunks.push(chunk.slice(0, copy));
+        if(copy){const block=chunk.slice(0,copy);
+          if(session.socket?.readyState===WebSocket.OPEN)sendPCM(session,block);
+          else session.chunks.push(block);}
         session.sampleCount += copy;
         const now = performance.now();
         let energy = 0;
@@ -151,6 +199,7 @@
     if (!current) return;
     const session = current;
     session.abort.abort();
+    if(session.socket){try{session.socket.close();}catch(_){}}
     current = null;
     void stopSession(session, false);
   }
