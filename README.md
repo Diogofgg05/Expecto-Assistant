@@ -1,6 +1,6 @@
 # EXPECTO Assistant 6.5.0 — Adaptive Inference & Voice
 
-**Versão 6.5 em validação no PR.** A versão 6.4 integrou as melhorias anteriormente
+**Versão 6.5 integrada na main.** A versão 6.4 integrou as melhorias anteriormente
 desenvolvidas nos PRs #11–#15: respostas Ollama em streaming, perfis de
 processamento, contexto limitado, Whisper persistente opcional, Piper e
 captura de áudio melhorada. As ligações HTTP ao Ollama são reutilizadas
