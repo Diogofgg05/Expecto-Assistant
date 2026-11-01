@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import httpx
 import json
+import time
+from .performance import choose_profile, bound_context, PerformanceMonitor
 from .config import Settings
 from .database import Database
 from .memory import MemoryEngine
@@ -25,6 +27,7 @@ class Ollama:
     def __init__(self, settings: Settings, db: Database, memory: MemoryEngine | None = None):
         self.settings, self.db = settings, db
         self.memory = memory or MemoryEngine(settings, db)
+        self.metrics = PerformanceMonitor()
 
     async def health(self) -> dict:
         try:
@@ -40,28 +43,34 @@ class Ollama:
                     'selected_installed': False}
 
     async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
-        # Notes and episodes are independent reads. Run them concurrently to
-        # reduce retrieval wall time before Ollama begins generating.
-        notes, episodes = await asyncio.gather(
-            self.memory.recall(question, 8),
-            self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5),
-        )
+        started = time.perf_counter()
+        profile = choose_profile(question, history, mode=self.settings.performance_mode)
+        if profile.retrieve_personal:
+            # Independent retrievals can share the wait time.
+            notes, episodes = await asyncio.gather(
+                self.memory.recall(question, 8),
+                self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5),
+            )
+        else:
+            # Only explicitly self-contained general definitions use this path.
+            notes, episodes = [], []
         # Never include unbounded external data in the prompt.
-        knowledge = self.db.documents(query=question, limit=4)
+        knowledge = self.db.documents(query=question, limit=4) if profile.retrieve_personal else []
         from .learning import LearningEngine
         from .quality import KnowledgeQuality
         verifier = KnowledgeQuality(self.db)
         learned_claims = []
-        for candidate in LearningEngine(self.settings,self.db).claims(question,5):
+        for candidate in (LearningEngine(self.settings,self.db).claims(question,5) if profile.retrieve_personal else []):
             assessment = verifier.inspect(candidate['id'])
             if assessment and assessment['decision'] != 'withhold':
                 learned_claims.append(candidate)
         from .temporal import DISPLAY
-        temporal = self.db.temporal_current(limit=20)
+        temporal = self.db.temporal_current(limit=20) if profile.retrieve_personal else []
         from .relations import RelationMemory, DISPLAY as RELATION_DISPLAY
-        linked = RelationMemory(self.db).search_related(question,limit=8,months=self.settings.episodic_lookback_months)
+        linked = (RelationMemory(self.db).search_related(question,limit=8,months=self.settings.episodic_lookback_months)
+                  if profile.retrieve_personal else [])
         from .consolidation import ConsolidationEngine
-        summary_items = ConsolidationEngine(self.db).summaries(question,limit=2)
+        summary_items = ConsolidationEngine(self.db).summaries(question,limit=2) if profile.retrieve_personal else []
         context = ('ESTRUTURAS CONSOLIDADAS (excertos, não factos verificados):\n' +
                    '\n'.join(x['content'][:1000] for x in summary_items) + '\n\n' +'ESTADO ATUAL REGISTADO (declarações do utilizador, não factos verificados):\n' +
                    '\n'.join(f"- {DISPLAY.get(t['subject'], t['subject'])}: {t['value']} (registado em {t['valid_from'][:10]})" for t in temporal) +
@@ -80,8 +89,15 @@ class Ollama:
                              for x in knowledge))
         from .living_intelligence import ContinuityEngine
         from .reflection import ReflectionEngine
-        continuity_context = ContinuityEngine(self.db).context()
-        reflection_context = ReflectionEngine(self.db).approved_context()
+        continuity_context = ContinuityEngine(self.db).context() if profile.retrieve_personal else ''
+        reflection_context = ReflectionEngine(self.db).approved_context() if profile.retrieve_personal else ''
+        # Never truncate SYSTEM or the approved identity. Secondary retrieved
+        # content is the only material subject to budget limits.
+        context = bound_context(context, profile.context_limit) if profile.retrieve_personal else ''
+        context_chars = len(context) + len(continuity_context) + len(reflection_context)
+        prep_ms = (time.perf_counter() - started) * 1000
+        first_token_at = None
+        completed = False
         messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
         for x in (history or [])[-6:]:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
@@ -95,7 +111,7 @@ class Ollama:
                     'messages': messages,
                     'stream': on_token is not None,
                     'keep_alive': self.settings.ollama_keep_alive,
-                    'options': {'num_predict': 450, 'temperature': 0.45},
+                    'options': {'num_predict': profile.max_predict, 'temperature': 0.35 if profile.name == 'fast' else 0.45},
                 }
                 if on_token is None:
                     resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
@@ -104,6 +120,7 @@ class Ollama:
                                 f'Executa: ollama pull {self.settings.ollama_model}.')
                     resp.raise_for_status()
                     answer = resp.json().get('message', {}).get('content', '').strip()
+                    completed = bool(answer)
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
                 # Ollama emits newline-delimited JSON. Relay each generated token
                 # immediately; keep exact concatenated text for memory capture.
@@ -122,7 +139,10 @@ class Ollama:
                         piece = event.get('message', {}).get('content', '')
                         if isinstance(piece, str) and piece:
                             chunks.append(piece)
+                            if first_token_at is None:
+                                first_token_at = time.perf_counter()
                             await on_token(piece)
+                completed = bool(chunks)
                 return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
         except httpx.ConnectError:
             if chunks and on_token is not None:
@@ -136,4 +156,13 @@ class Ollama:
             return ('Ollama excedeu o tempo de resposta. Experimenta um modelo '
                     'mais pequeno ou verifica a memória RAM e a utilização da CPU.')
         except (httpx.HTTPError, ValueError):
+            if chunks and on_token is not None:
+                raise  # Do not mark partial output as a completed response.
             return 'Ocorreu um erro na comunicação com o modelo local. Verifica os diagnósticos.'
+        finally:
+            self.metrics.record(
+                profile=profile.name, prep_ms=prep_ms,
+                total_ms=(time.perf_counter() - started) * 1000,
+                ttft_ms=((first_token_at - started) * 1000 if first_token_at is not None else None),
+                context_chars=context_chars, ok=completed,
+            )
