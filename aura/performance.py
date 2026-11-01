@@ -93,13 +93,22 @@ class PerformanceMonitor:
         self._rows = deque(maxlen=64)
 
     def record(self, *, profile: str, prep_ms: float, total_ms: float,
-               ttft_ms: float | None, context_chars: int, ok: bool):
+               ttft_ms: float | None, context_chars: int, ok: bool, provider=None):
+        provider = provider if isinstance(provider, dict) else {}
+        decode_count = provider.get('eval_count')
+        decode_ns = provider.get('eval_duration')
+        prompt_count = provider.get('prompt_eval_count')
+        tok_per_s = (round(decode_count * 1e9 / decode_ns, 2)
+                     if isinstance(decode_count, (int, float)) and decode_count >= 0
+                     and isinstance(decode_ns, (int, float)) and decode_ns > 0 else None)
         self._rows.append({
             'profile': profile, 'prep_ms': round(max(0, prep_ms), 1),
             'total_ms': round(max(0, total_ms), 1),
             'ttft_ms': round(ttft_ms, 1) if ttft_ms is not None else None,
             'context_chars': max(0, context_chars),
             'ok': bool(ok),
+            'tokens_per_second': tok_per_s,
+            'prompt_tokens_evaluated': prompt_count if isinstance(prompt_count, int) and prompt_count >= 0 else None,
         })
 
     def summary(self) -> dict:
@@ -120,6 +129,7 @@ class PerformanceMonitor:
                 'preparation': distribution('prep_ms'),
                 'total': distribution('total_ms'),
                 'first_token': distribution('ttft_ms'),
+                'tokens_per_second': distribution('tokens_per_second'),
             },
             'mean_context_chars': round(statistics.mean(row['context_chars'] for row in rows))
                 if rows else None,
