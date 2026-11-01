@@ -220,6 +220,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await websocket.accept()
         pcm = bytearray()
         last_partial_at = time.monotonic()
+        partial_task = None
+        generation = 0
+        async def partial_result(audio: bytes, sequence: int):
+            try:
+                result = await persistent_whisper.transcribe_pcm(audio, partial=True)
+                if sequence == generation:
+                    await websocket.send_json({'type': 'partial', **result})
+            except (WhisperOfflineError, WebSocketDisconnect, RuntimeError):
+                pass
         try:
             while True:
                 message = await websocket.receive()
@@ -236,11 +245,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if len(pcm) >= 2 * 16000 * 2 and time.monotonic() - last_partial_at >= 2:
                         last_partial_at = time.monotonic()
                         sample = bytes(pcm[-min(len(pcm), 5 * 16000 * 2):])
-                        try:
-                            result = await persistent_whisper.transcribe_pcm(sample, partial=True)
-                            await websocket.send_json({'type':'partial', **result})
-                        except WhisperOfflineError:
-                            await websocket.send_json({'type':'error','reason':'transcription_failed'})
+                        if partial_task is None or partial_task.done():
+                            partial_task = asyncio.create_task(partial_result(sample, generation))
                 elif message.get('text'):
                     try:
                         command = json.loads(message['text'])
@@ -248,6 +254,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         await websocket.close(code=1003)
                         return
                     if command.get('type') == 'flush':
+                        generation += 1  # Prevent stale provisional text after final result.
+                        if partial_task is not None:
+                            partial_task.cancel()
                         if len(pcm) >= MIN_PCM_BYTES:
                             try:
                                 result = await persistent_whisper.transcribe_pcm(bytes(pcm))
@@ -258,12 +267,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             await websocket.send_json({'type':'final','text':'','partial':False})
                         pcm.clear()
                     elif command.get('type') == 'cancel':
+                        generation += 1
+                        if partial_task is not None: partial_task.cancel()
                         pcm.clear()
                     else:
                         await websocket.close(code=1003)
                         return
         except WebSocketDisconnect:
             pass
+        finally:
+            if partial_task is not None:
+                partial_task.cancel()
 
     @app.post('/api/voice/transcribe')
     async def voice_transcribe(request: Request):
