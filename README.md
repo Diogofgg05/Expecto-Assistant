@@ -1,3 +1,26 @@
+# EXPECTO Assistant 6.4.0 — Voice & Ultra Performance
+
+**Versão integrada na main.** A versão 6.4 reúne as melhorias anteriormente
+desenvolvidas nos PRs #11–#15: respostas Ollama em streaming, perfis de
+processamento, contexto limitado, Whisper persistente opcional, Piper e
+captura de áudio melhorada. As ligações HTTP ao Ollama são reutilizadas
+entre pedidos e encerradas durante o shutdown da aplicação.
+
+**Validação:** testes automatizados do [PR #16](https://github.com/Diogofgg05/Expecto-Assistant/pull/16)
+aprovados. Whisper/Piper reais, consumo de recursos e ganhos de velocidade
+continuam **por medir no computador de destino**. As funcionalidades de voz
+local exigem instalação e configuração opcionais dos modelos.
+
+Configuração: [voz local](docs/LOCAL_VOICE_55.md),
+[Whisper e Ollama](docs/WHISPER_OLLAMA_61.md),
+[desempenho](docs/ULTRA_PERFORMANCE_ENGINE_60.md).
+O OpenJarvis inspirou a reutilização de ligações HTTP; não foi copiado código
+do projeto externo.
+
+---
+
+## Histórico de versões
+
 # Expecto Assistant 5.2 — Hybrid Research & Verified Reasoning
 
 ## Novas previews reais do frontend — PNG e clips MP4
