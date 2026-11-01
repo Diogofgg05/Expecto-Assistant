@@ -61,7 +61,7 @@ def choose_profile(question: str, history=None, *, mode: str = 'balanced') -> Pr
         mode = 'conservative'
     if mode == 'balanced' and _DEEP.search(question):
         return DEEP
-    if (mode == 'balanced' and 6 <= len(question) <= 135 and
+    if (mode == 'balanced' and not history and 6 <= len(question) <= 135 and
             _FAST_PATTERN.match(question) and not _PERSONAL.search(question) and
             not _REFERENCE.search(question) and not _DEEP.search(question) and
             not _CURRENT.search(question)):
