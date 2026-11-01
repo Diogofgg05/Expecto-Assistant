@@ -58,6 +58,7 @@
 
   function sendPCM(session, block){
     if(!session.socket || session.socket.readyState!==WebSocket.OPEN)return;
+    if(session.resampler){const output=session.resampler.push(block);if(output.length&&session.socket.bufferedAmount<=128*1024)session.socket.send(output.buffer);return;}
     const rate=session.rate, ratio=rate/16000, len=Math.floor(block.length/ratio);
     const output=new Int16Array(len);
     for(let i=0;i<len;i++){
@@ -110,7 +111,7 @@
       ...callbacks, abort: new AbortController(), done: false,
       stream: null, context: null, processor: null, source: null, muted: null,
       chunks: [], sampleCount: 0, voiced: false, voicedMs: 0, silenceSince: null,
-      socket: null, rate: 48000
+      socket: null, resampler:null, gate:null, rate: 48000
     };
     current = session;
     try {
@@ -128,8 +129,26 @@
       session.source = session.context.createMediaStreamSource(session.stream);
       // ScriptProcessor is a compatibility fallback; a dedicated AudioWorklet
       // can replace it later without changing the backend recording contract.
-      session.processor = session.context.createScriptProcessor(2048, 1, 1);
-      session.muted = session.context.createGain(); session.muted.gain.value = 0;
+      const DSP=window.ExpectoAudioDSP;
+      if(DSP){
+        session.resampler=new DSP.PCM16Resampler(session.rate);
+        session.gate=new DSP.VoiceGate(session.rate);
+      }
+      session.muted=session.context.createGain();session.muted.gain.value=0;
+      let workletReady=false;
+      if(session.context.audioWorklet && window.AudioWorkletNode){
+        try{
+          await session.context.audioWorklet.addModule('/static/capture-worklet.js');
+          if(current!==session || session.done)return true;
+          session.processor=new AudioWorkletNode(session.context,'expecto-capture');
+          session.processor.port.onmessage=(event)=>consume(event.data);
+          workletReady=true;
+        }catch(_){/* Compatibility fallback for unsupported worklets. */}
+      }
+      if(!workletReady){
+        session.processor=session.context.createScriptProcessor(2048,1,1);
+        session.processor.onaudioprocess=event=>consume(event.inputBuffer.getChannelData(0));
+      }
       session.source.connect(session.processor);
       session.processor.connect(session.muted);
       session.muted.connect(session.context.destination);
@@ -162,32 +181,32 @@
         };
       }
       session.onStatus?.('listening');
-      let startedAt = performance.now();
-      session.processor.onaudioprocess = event => {
-        if (session.done) return;
-        const chunk = event.inputBuffer.getChannelData(0);
-        const limit = session.rate * MAX_SECONDS;
-        const copy = Math.min(chunk.length, Math.max(0, limit - session.sampleCount));
-        if(copy){const block=chunk.slice(0,copy);
+      const startedAt=performance.now();
+      function consume(chunk){
+        if(session.done || current!==session)return;
+        const limit=session.rate*MAX_SECONDS;
+        const copy=Math.min(chunk.length,Math.max(0,limit-session.sampleCount));
+        if(copy){
+          const block=chunk.slice(0,copy);
           if(session.socket?.readyState===WebSocket.OPEN)sendPCM(session,block);
-          else session.chunks.push(block);}
-        session.sampleCount += copy;
-        const now = performance.now();
-        let energy = 0;
-        for (const x of chunk) energy += x * x;
-        const rms = Math.sqrt(energy / chunk.length);
-        if (rms > 0.015) {
-          session.voiced = true;
-          session.voicedMs += (chunk.length / session.rate) * 1000;
-          session.silenceSince = null;
-        } else if (session.voiced && session.silenceSince === null) session.silenceSince = now;
-        const longEnough = session.voicedMs >= MIN_VOICE_MS;
-        if ((longEnough && session.silenceSince && now - session.silenceSince > SILENCE_MS) ||
-            now - startedAt >= MAX_SECONDS * 1000 ||
-            session.sampleCount >= session.rate * MAX_SECONDS) {
-          void stopSession(session, longEnough);
+          else session.chunks.push(block);
         }
-      };
+        session.sampleCount+=copy;
+        const now=performance.now();
+        let decision;
+        if(session.gate)decision=session.gate.update(chunk,now);
+        else{
+          let energy=0;for(const x of chunk)energy+=x*x;
+          const rms=Math.sqrt(energy/chunk.length);
+          if(rms>0.015){session.voiced=true;session.voicedMs+=chunk.length/session.rate*1000;session.silenceSince=null;}
+          else if(session.voiced&&session.silenceSince===null)session.silenceSince=now;
+          decision={voiced:session.voicedMs>=MIN_VOICE_MS,
+                    end:session.voicedMs>=MIN_VOICE_MS&&session.silenceSince!==null&&now-session.silenceSince>SILENCE_MS,
+                    max:now-startedAt>=MAX_SECONDS*1000};
+        }
+        session.voiced ||= decision.voiced;
+        if(decision.end||decision.max||session.sampleCount>=limit)void stopSession(session,decision.voiced);
+      }
       return true;
     } catch (err) {
       await stopSession(session, false);
