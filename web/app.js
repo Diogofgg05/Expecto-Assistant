@@ -298,6 +298,7 @@
             state.listening=false;state.autoListen=false;setMode('idle');
           }
         },
+        onPartial(text){if(state.listening&&text)sayText('A ouvir: '+text);},
         onResult(text){
           state.listening=false;
           if(text && state.autoListen)send(text,{fromVoice:true});
