@@ -45,4 +45,18 @@ def test_api_version_and_lifecycle(tmp_path):
     with TestClient(app) as client:
         response=client.get('/api/health')
         assert response.status_code==200
-        assert response.json()['version']=='6.4.0'
+        assert response.json()['version']=='6.5.0'
+
+
+def test_embedding_http_client_closed_after_app_shutdown(tmp_path):
+    app=create_app(Settings(data_dir=tmp_path,database_encryption_required=False))
+    class FakeAsyncClient:
+        def __init__(self):
+            self.is_closed=False
+        async def aclose(self):
+            self.is_closed=True
+    client=FakeAsyncClient()
+    app.state.engine.memory._client=client
+    with TestClient(app):
+        assert not client.is_closed
+    assert client.is_closed
