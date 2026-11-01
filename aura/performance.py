@@ -56,7 +56,7 @@ def choose_profile(question: str, history=None, *, mode: str = 'balanced') -> Pr
     """Route only self-contained *general* definitions to the lean path."""
     question = (question or '').strip()
     if mode == 'off':
-        return STANDARD
+        return Profile('off', 450, 0, True)
     if mode not in ('balanced', 'conservative'):
         mode = 'conservative'
     if mode == 'balanced' and _DEEP.search(question):
