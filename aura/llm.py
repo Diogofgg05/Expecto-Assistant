@@ -159,14 +159,15 @@ class Ollama:
                 'messages': messages,
                 'stream': on_token is not None,
                 'keep_alive': self.settings.ollama_keep_alive,
-                # Skip costly thinking tokens for truly independent definitions.
-                # Only when FAST is selected; never disable reasoning for DEEP.
-                'think': False if profile.name == 'fast' else None,
                 'options': {
                     'num_predict': profile.max_predict,
                     'temperature': 0.35 if profile.name == 'fast' else 0.45,
                 },
             }
+            # Disable hidden thinking only for self-contained FAST definitions.
+            # Other profiles leave the model's default reasoning behavior intact.
+            if profile.name == 'fast':
+                payload['think'] = False
             # A missing optional fast/deep model must not break the chat.
             # Remember failures only for the lifetime of this process.
             candidates = [chosen] + ([base_model] if chosen != base_model else [])
