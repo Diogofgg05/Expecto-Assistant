@@ -271,12 +271,36 @@
     }
   }
   function edit(){shell.hidden=false;input.focus();}
-  function voiceInput(automatic=false){
+  async function voiceInput(automatic=false){
     if(state.busy)interrupt(); // The user's voice interrupts model + TTS.
     if(state.listening){
-      state.autoListen=false;state.recognition?.abort();return;
+      state.autoListen=false;state.recognition?.abort();window.ExpectoLocalSTT?.cancel();state.listening=false;setMode('idle');return;
     }
     if(!automatic)state.autoListen=true;
+    window.ExpectoVoice?.cancel();
+    if(window.ExpectoLocalSTT){
+      const usedLocal=await window.ExpectoLocalSTT.start({
+        onStatus(mode){
+          if(mode==='listening'){
+            state.listening=true;setMode('listening');sayText('Estou a ouvir (Whisper local)...');
+          }else if(mode==='transcribing'){
+            state.listening=false;setMode('thinking');sayText('A transcrever localmente...');
+          }else if(mode==='idle'){
+            state.listening=false;state.autoListen=false;setMode('idle');
+          }
+        },
+        onResult(text){
+          state.listening=false;
+          if(text && state.autoListen)send(text,{fromVoice:true});
+          else{state.autoListen=false;setMode('idle');}
+        },
+        onError(error){
+          state.listening=false;state.autoListen=false;setMode('idle');
+          sayText('Microfone local: '+String(error.message||error)+'. Usa / para escrever.',true);
+        }
+      });
+      if(usedLocal) return;
+    }
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!Recognition){
       state.autoListen=false;
@@ -323,11 +347,13 @@
     }
     if(e.key==='/'){e.preventDefault();edit();}
     if(e.key.toLowerCase()==='v'&&!e.repeat){e.preventDefault();voiceInput();}
-    if(e.key==='Escape'){e.preventDefault();state.autoListen=false;state.recognition?.abort();interrupt();closeAll();sayText('Modo central.');}
+    if(e.key==='Escape'){e.preventDefault();state.autoListen=false;state.recognition?.abort();window.ExpectoLocalSTT?.cancel();state.listening=false;interrupt();closeAll();sayText('Modo central.');}
   });
   function renderClock(){const d=new Date();clock.textContent=d.toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'});}
   renderClock();setInterval(renderClock,10000);
   fetch('/api/config').then(r=>r.json()).then(x=>{state.voiceOutput=!!x.voice_output;}).catch(()=>{});
-  window.addEventListener('beforeunload',()=>{state.request?.abort();window.ExpectoVoice?.cancel();});
+  fetch('/api/voice/capabilities').then(r=>r.ok?r.json():null)
+    .then(x=>{window.ExpectoVoice?.configure?.({localTTS:!!x?.local_tts});}).catch(()=>{});
+  window.addEventListener('beforeunload',()=>{state.request?.abort();window.ExpectoVoice?.cancel();window.ExpectoLocalSTT?.cancel();});
   window.AuraUI={send,openPanel,closeAll}; // Exposed for local accessibility / developer tests.
 })();
