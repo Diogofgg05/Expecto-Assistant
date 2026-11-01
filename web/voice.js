@@ -10,6 +10,7 @@
   let active = false, finished = false, uttering = false, started = false;
   let pending = '', accepted = 0, spoken = 0;
   let queue = [], handlers = {};
+  let localTTS = false, localAbort = null, localAudio = null, localURL = '';
 
   function report(type, details = {}) {
     try {
@@ -25,6 +26,9 @@
   }
   function cancel() {
     epoch += 1;
+    localAbort?.abort(); localAbort = null;
+    if(localAudio){localAudio.pause();localAudio.src='';localAudio=null;}
+    if(localURL){URL.revokeObjectURL(localURL);localURL='';}
     active = false; finished = false; uttering = false; started = false;
     pending = ''; accepted = 0; spoken = 0; queue = [];
     handlers = {};
@@ -42,6 +46,59 @@
       return;
     }
     const text = queue.shift();
+    if (localTTS) { void speakLocal(text, token); return; }
+    speakBrowser(text, token);
+  }
+  async function speakLocal(text, token) {
+    uttering = true;
+    const controller = new AbortController();localAbort = controller;
+    try {
+      const response = await fetch('/api/voice/synthesize', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text}), signal: controller.signal
+      });
+      if (!response.ok) throw new Error('Local voice synthesis failed');
+      const audioBlob = await response.blob();
+      if (token !== epoch || !active) return;
+      localURL = URL.createObjectURL(audioBlob);
+      const audio = new Audio(localURL);
+      localAudio = audio;
+      audio.onplay = () => {
+        if (token !== epoch || !active) return;
+        if (!started) { started = true; handlers.onStart?.(); }
+        report('start', {text, engine:'piper'});
+      };
+      let completed = false;
+      function finishSegment() {
+        if (completed || token !== epoch || !active) return;
+        completed = true;
+        localAudio = null;
+        if(localURL){URL.revokeObjectURL(localURL);localURL='';}
+        localAbort = null;
+        uttering = false; spoken += text.length;
+        report('segment_end',{text,engine:'piper'});
+        pump(token);
+      }
+      audio.onended = finishSegment;
+      audio.onerror = () => {
+        if(token !== epoch || !active) return;
+        localAudio = null;
+        if(localURL){URL.revokeObjectURL(localURL);localURL='';}
+        localAbort = null; uttering = false;
+        speakBrowser(text, token);
+      };
+      await audio.play();
+    } catch (err) {
+      if(token !== epoch || !active || controller.signal.aborted) return;
+      // Browser autoplay restrictions and Piper failures retain Web Speech.
+      if(localURL){URL.revokeObjectURL(localURL);localURL='';}
+      localAudio = null;localAbort = null;uttering = false;
+      speakBrowser(text,token);
+    }
+  }
+  function speakBrowser(text, token) {
+    if (token !== epoch || !active) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-PT';
     utterance.rate = 1.04; utterance.pitch = .95;
@@ -51,7 +108,7 @@
     utterance.onstart = () => {
       if (token !== epoch || !active) return;
       if (!started) { started = true; handlers.onStart?.(); }
-      report('start', { text });
+      report('start', { text, engine:'browser' });
     };
     utterance.onboundary = event => {
       if (token !== epoch || !active) return;
@@ -63,7 +120,7 @@
       if (token !== epoch || !active) return;
       uttering = false;
       spoken += text.length;
-      report('segment_end', { text });
+      report('segment_end', { text, engine:'browser' });
       pump(token);
     }
     utterance.onend = next;
@@ -97,7 +154,8 @@
     pump(epoch);
   }
   const api = {
-    get supported() { return !!synth && !!window.SpeechSynthesisUtterance; },
+    get supported() { return (!!synth && !!window.SpeechSynthesisUtterance) || localTTS; },
+    configure(options = {}) { localTTS = !!options.localTTS; },
     get active() { return active; },
     get queuedSegments() { return queue.length; },
     start(callbacks = {}) {
