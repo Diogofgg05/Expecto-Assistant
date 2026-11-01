@@ -13,6 +13,8 @@ on:
       - 'tests/test_voice_browser_v54.cjs'
       - 'tests/test_voice_prefetch_v56.cjs'
       - 'tests/test_local_voice_v55.py'
+      - 'tests/test_piper_persistent_v57.py'
+      - 'aura/local_voice.py'
       - '.github/workflows/voice-streaming-checks.yml'
 jobs:
   checks:
@@ -35,6 +37,6 @@ jobs:
           node --check web/voice.js
           node --check web/local-voice.js
       - name: Streaming API regression
-        run: python -m pytest -q tests/test_voice_streaming_v53.py tests/test_local_voice_v55.py tests/test_api.py tests/test_engine.py
+        run: python -m pytest -q tests/test_voice_streaming_v53.py tests/test_local_voice_v55.py tests/test_piper_persistent_v57.py tests/test_api.py tests/test_engine.py
       - name: Browser speech regression
         run: node --test tests/test_voice_browser_v54.cjs tests/test_voice_prefetch_v56.cjs
