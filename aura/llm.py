@@ -1,6 +1,7 @@
 """Ollama is optional; when offline we report the limitation instead of hallucinating."""
 from __future__ import annotations
 import httpx
+import json
 from .config import Settings
 from .database import Database
 from .memory import MemoryEngine
@@ -37,7 +38,7 @@ class Ollama:
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
 
-    async def reply(self, question: str, history: list[dict] | None = None) -> str:
+    async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         notes = await self.memory.recall(question, 8)
         episodes = await self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5)
         # Never include unbounded external data in the prompt.
@@ -83,17 +84,40 @@ class Ollama:
         messages.append({'role': 'user', 'content': question[:2000]})
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(65.0, connect=3.0)) as client:
-                resp = await client.post(self.settings.ollama_url + '/api/chat', json={
+                payload = {
                     'model': self.settings.ollama_model,
-                    'messages': messages, 'stream': False,
+                    'messages': messages,
+                    'stream': on_token is not None,
                     'options': {'num_predict': 450, 'temperature': 0.45},
-                })
-                if resp.status_code == 404:
-                    return (f'O modelo {self.settings.ollama_model} não está instalado. '
-                            f'Executa: ollama pull {self.settings.ollama_model}.')
-                resp.raise_for_status()
-                answer = resp.json().get('message', {}).get('content', '').strip()
-                return answer or 'O modelo respondeu sem texto. Tenta novamente.'
+                }
+                if on_token is None:
+                    resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
+                    if resp.status_code == 404:
+                        return (f'O modelo {self.settings.ollama_model} não está instalado. '
+                                f'Executa: ollama pull {self.settings.ollama_model}.')
+                    resp.raise_for_status()
+                    answer = resp.json().get('message', {}).get('content', '').strip()
+                    return answer or 'O modelo respondeu sem texto. Tenta novamente.'
+                # Ollama emits newline-delimited JSON. Relay each generated token
+                # immediately; keep exact concatenated text for memory capture.
+                chunks = []
+                async with client.stream('POST', self.settings.ollama_url + '/api/chat',
+                                         json=payload) as resp:
+                    if resp.status_code == 404:
+                        return (f'O modelo {self.settings.ollama_model} não está instalado. '
+                                f'Executa: ollama pull {self.settings.ollama_model}.')
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.strip():
+                            continue
+                        event = json.loads(line)
+                        if event.get('error'):
+                            raise ValueError('Ollama streaming failed')
+                        piece = event.get('message', {}).get('content', '')
+                        if isinstance(piece, str) and piece:
+                            chunks.append(piece)
+                            await on_token(piece)
+                return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
         except httpx.ConnectError:
             return ('Não consigo contactar o Ollama. Abre o Ollama, confirma que '
                     'está a executar e tenta novamente. Os comandos da interface '
