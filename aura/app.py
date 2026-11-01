@@ -6,7 +6,7 @@ import logging
 import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
@@ -19,6 +19,7 @@ from .database import Database
 from .engine import AuraEngine
 from .security import SecureBackupManager, VaultError
 from .local_voice import LocalVoice, VoiceInvalid, VoiceUnavailable, MAX_WAV_BYTES
+from .persistent_whisper import PersistentWhisper, WhisperOfflineError, MIN_PCM_BYTES, MAX_PCM_BYTES
 
 
 class Message(BaseModel):
@@ -37,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
     local_voice = LocalVoice(settings)
+    persistent_whisper = PersistentWhisper(settings)
     secure = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
 
     @asynccontextmanager
@@ -190,7 +192,78 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get('/api/voice/capabilities')
     async def voice_capabilities():
         """Feature detection without exposing private machine paths."""
-        return local_voice.capabilities()
+        return {**local_voice.capabilities(), **persistent_whisper.capabilities()}
+
+    @app.websocket('/api/voice/continuous')
+    async def continuous_voice(websocket: WebSocket):
+        """One explicit local connection; PCM blocks, bounded partial updates.
+
+        Client sends little-endian PCM16 byte frames, and JSON {"type":"flush"}
+        to finalize a turn. A partial is returned at most once per 2 seconds
+        after enough audio, without reloading the model.
+        """
+        from ipaddress import ip_address
+        peer = websocket.client.host if websocket.client else ''
+        try:
+            local_peer = ip_address(peer).is_loopback
+        except ValueError:
+            local_peer = peer == 'testclient'
+        origin = websocket.headers.get('origin')
+        if (not local_peer or (origin and origin not in (
+                'http://127.0.0.1:8000', 'http://localhost:8000',
+                f'http://{settings.host}:{settings.port}'))):
+            await websocket.close(code=1008)
+            return
+        if not persistent_whisper.available:
+            await websocket.close(code=1013)
+            return
+        await websocket.accept()
+        pcm = bytearray()
+        last_partial_at = time.monotonic()
+        try:
+            while True:
+                message = await websocket.receive()
+                if message['type'] == 'websocket.disconnect':
+                    break
+                raw = message.get('bytes')
+                if raw is not None:
+                    if len(raw) % 2 or len(pcm) + len(raw) > MAX_PCM_BYTES:
+                        await websocket.send_json({'type':'error','reason':'audio_limit'})
+                        await websocket.close(code=1009)
+                        return
+                    pcm.extend(raw)
+                    # At most one partial per ~2 s to protect old CPUs.
+                    if len(pcm) >= 2 * 16000 * 2 and time.monotonic() - last_partial_at >= 2:
+                        last_partial_at = time.monotonic()
+                        sample = bytes(pcm[-min(len(pcm), 5 * 16000 * 2):])
+                        try:
+                            result = await persistent_whisper.transcribe_pcm(sample, partial=True)
+                            await websocket.send_json({'type':'partial', **result})
+                        except WhisperOfflineError:
+                            await websocket.send_json({'type':'error','reason':'transcription_failed'})
+                elif message.get('text'):
+                    try:
+                        command = json.loads(message['text'])
+                    except (ValueError, TypeError):
+                        await websocket.close(code=1003)
+                        return
+                    if command.get('type') == 'flush':
+                        if len(pcm) >= MIN_PCM_BYTES:
+                            try:
+                                result = await persistent_whisper.transcribe_pcm(bytes(pcm))
+                                await websocket.send_json({'type':'final', **result})
+                            except WhisperOfflineError:
+                                await websocket.send_json({'type':'error','reason':'transcription_failed'})
+                        else:
+                            await websocket.send_json({'type':'final','text':'','partial':False})
+                        pcm.clear()
+                    elif command.get('type') == 'cancel':
+                        pcm.clear()
+                    else:
+                        await websocket.close(code=1003)
+                        return
+        except WebSocketDisconnect:
+            pass
 
     @app.post('/api/voice/transcribe')
     async def voice_transcribe(request: Request):
