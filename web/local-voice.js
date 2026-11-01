@@ -80,8 +80,17 @@
     if (!send || !session.voiced) { if(session.socket)session.socket.close();current = null; session.onStatus?.('idle'); return; }
     session.onStatus?.('transcribing');
     if(session.socket){
-      if(session.socket.readyState === WebSocket.OPEN){session.socket.send(JSON.stringify({type:'flush'}));return;}
-      session.onError?.(new Error('Canal Whisper local interrompido.'));current=null;return;
+      if(session.socket.readyState === WebSocket.OPEN){
+        session.socket.send(JSON.stringify({type:'flush'}));return;
+      }
+      if(session.socket.readyState === WebSocket.CONNECTING){
+        // The recording may end before the WebSocket handshake finishes.
+        // Keep recorded PCM until onopen, then flush exactly once.
+        session.flushWhenOpen=true;
+        return;
+      }
+      session.onError?.(new Error('Canal Whisper local interrompido.'));
+      current=null;return;
     }
     const wav = encodeWav(session.chunks, session.sampleCount, session.rate);
     session.chunks = []; // Free source PCM before network transcription.
@@ -111,7 +120,7 @@
       ...callbacks, abort: new AbortController(), done: false,
       stream: null, context: null, processor: null, source: null, muted: null,
       chunks: [], sampleCount: 0, voiced: false, voicedMs: 0, silenceSince: null,
-      socket: null, resampler:null, gate:null, rate: 48000
+      socket: null, resampler:null, gate:null, flushWhenOpen:false, rate: 48000
     };
     current = session;
     try {
@@ -178,6 +187,10 @@
           if(current!==session){socket.close();return;}
           for(const block of session.chunks)sendPCM(session,block);
           session.chunks=[];
+          if(session.flushWhenOpen){
+            session.flushWhenOpen=false;
+            socket.send(JSON.stringify({type:'flush'}));
+          }
         };
       }
       session.onStatus?.('listening');
