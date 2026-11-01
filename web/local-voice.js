@@ -17,8 +17,17 @@
     return cached;
   }
 
-  function encodeWav(samples, rate) {
-    const count = Math.min(Math.round(rate * MAX_SECONDS), samples.length);
+  function encodeWav(chunks, count, rate) {
+    // Typed arrays avoid hundreds of thousands of boxed JS numbers.
+    count = Math.min(Math.round(rate * MAX_SECONDS), count);
+    const samples = new Float32Array(count);
+    let offset = 0;
+    for (const chunk of chunks) {
+      const copy = Math.min(chunk.length, count - offset);
+      if (copy <= 0) break;
+      samples.set(chunk.subarray(0, copy), offset);
+      offset += copy;
+    }
     const ratio = rate / 16000;
     const len = Math.floor(count / ratio);
     const bytes = new ArrayBuffer(44 + len * 2);
@@ -55,7 +64,8 @@
     if (current !== session) return;
     if (!send || !session.voiced) { current = null; session.onStatus?.('idle'); return; }
     session.onStatus?.('transcribing');
-    const wav = encodeWav(Float32Array.from(session.samples), session.rate);
+    const wav = encodeWav(session.chunks, session.sampleCount, session.rate);
+    session.chunks = []; // Free source PCM before network transcription.
     const signal = session.abort.signal;
     try {
       const resp = await fetch('/api/voice/transcribe', {
@@ -81,7 +91,7 @@
     const session = {
       ...callbacks, abort: new AbortController(), done: false,
       stream: null, context: null, processor: null, source: null, muted: null,
-      samples: [], sampleCount: 0, voiced: false, voicedMs: 0, silenceSince: null,
+      chunks: [], sampleCount: 0, voiced: false, voicedMs: 0, silenceSince: null,
       rate: 48000
     };
     current = session;
@@ -110,8 +120,10 @@
       session.processor.onaudioprocess = event => {
         if (session.done) return;
         const chunk = event.inputBuffer.getChannelData(0);
-        for (const sample of chunk) session.samples.push(sample);
-        session.sampleCount += chunk.length;
+        const limit = session.rate * MAX_SECONDS;
+        const copy = Math.min(chunk.length, Math.max(0, limit - session.sampleCount));
+        if (copy) session.chunks.push(chunk.slice(0, copy));
+        session.sampleCount += copy;
         const now = performance.now();
         let energy = 0;
         for (const x of chunk) energy += x * x;
