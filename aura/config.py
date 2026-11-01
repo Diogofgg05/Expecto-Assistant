@@ -30,6 +30,10 @@ class Settings:
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'hermes3'
     ollama_keep_alive: str = '10m'
+    voice_whisper_binary: str = ''
+    voice_whisper_model: str = ''
+    voice_piper_binary: str = ''
+    voice_piper_model: str = ''
     embedding_model: str = ''
     searxng_url: str = ''
     research_interval_hours: int = 24
@@ -60,6 +64,10 @@ class Settings:
             # 0m saves RAM, 10m avoids costly model reload between turns.
             ollama_keep_alive=(lambda value: value if re.fullmatch(r'(?:0|[1-9][0-9]?)m', value)
                                else '10m')(os.getenv('AURA_OLLAMA_KEEP_ALIVE', '10m').strip()),
+            voice_whisper_binary=os.getenv('AURA_VOICE_WHISPER_BINARY', ''),
+            voice_whisper_model=os.getenv('AURA_VOICE_WHISPER_MODEL', ''),
+            voice_piper_binary=os.getenv('AURA_VOICE_PIPER_BINARY', ''),
+            voice_piper_model=os.getenv('AURA_VOICE_PIPER_MODEL', ''),
             embedding_model=os.getenv('AURA_EMBEDDING_MODEL', ''),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
