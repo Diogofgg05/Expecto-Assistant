@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 from ipaddress import ip_address
@@ -18,6 +18,7 @@ from .config import Settings, ROOT
 from .database import Database
 from .engine import AuraEngine
 from .security import SecureBackupManager, VaultError
+from .local_voice import LocalVoice, VoiceInvalid, VoiceUnavailable, MAX_WAV_BYTES
 
 
 class Message(BaseModel):
@@ -26,11 +27,16 @@ class Message(BaseModel):
     session_id: str = Field(default="", max_length=64)
 
 
+class VoiceText(BaseModel):
+    text: str = Field(min_length=1, max_length=240)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = Database(settings.data_dir / 'aura.sqlite3', passphrase=settings.database_passphrase,
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
+    local_voice = LocalVoice(settings)
     secure = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
 
     @asynccontextmanager
@@ -180,6 +186,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return StreamingResponse(generate(), media_type='application/x-ndjson',
                                  headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-store'})
+
+    @app.get('/api/voice/capabilities')
+    async def voice_capabilities():
+        """Feature detection without exposing private machine paths."""
+        return local_voice.capabilities()
+
+    @app.post('/api/voice/transcribe')
+    async def voice_transcribe(request: Request):
+        """Accept only bounded WAV PCM input. Never upload to a third party."""
+        if not local_voice.stt_available:
+            raise HTTPException(503, 'Whisper local não está configurado.')
+        if request.headers.get('content-type', '').split(';', 1)[0].lower() != 'audio/wav':
+            raise HTTPException(415, 'Envia áudio WAV PCM16 mono 16 kHz.')
+        size = 0
+        pieces = []
+        async for piece in request.stream():
+            size += len(piece)
+            if size > MAX_WAV_BYTES:
+                raise HTTPException(413, 'Gravação demasiado grande.')
+            pieces.append(piece)
+        try:
+            return await local_voice.transcribe(b''.join(pieces))
+        except VoiceInvalid as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except VoiceUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    @app.post('/api/voice/synthesize')
+    async def voice_synthesize(payload: VoiceText):
+        """Optional local PCM voice output for short text segments."""
+        if not local_voice.tts_available:
+            raise HTTPException(503, 'Piper local não está configurado.')
+        try:
+            wav = await local_voice.synthesize(payload.text)
+        except VoiceInvalid as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except VoiceUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return Response(wav, media_type='audio/wav',
+                        headers={'Cache-Control': 'no-store'})
 
     @app.get('/api/panel/{name}')
     async def panel(name: str):
