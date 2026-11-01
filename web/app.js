@@ -273,7 +273,7 @@
   function edit(){shell.hidden=false;input.focus();}
   async function voiceInput(automatic=false){
     if(state.busy)interrupt(); // The user's voice interrupts model + TTS.
-    if(state.listening){
+    if(state.listening || window.ExpectoLocalSTT?.active){
       state.autoListen=false;state.recognition?.abort();window.ExpectoLocalSTT?.cancel();state.listening=false;setMode('idle');return;
     }
     if(!automatic)state.autoListen=true;
