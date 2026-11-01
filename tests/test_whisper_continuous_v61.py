@@ -68,3 +68,23 @@ def test_websocket_final_and_partial(tmp_path,monkeypatch):
             ws.send_text('{"type":"flush"}')
             assert ws.receive_json()['type']=='final'
     assert calls['loads']==1
+
+
+def test_final_turn_uses_silero_but_partial_remains_fast(tmp_path, monkeypatch):
+    settings, counts = make_settings(tmp_path, monkeypatch)
+    import sys
+    module = sys.modules['faster_whisper']
+    original_model = module.WhisperModel
+    modes = []
+    class CaptureModel(original_model):
+        def transcribe(self, *args, **kwargs):
+            modes.append(kwargs['vad_filter'])
+            return super().transcribe(*args, **kwargs)
+    module.WhisperModel = CaptureModel
+    worker = PersistentWhisper(settings)
+    async def exercise():
+        await worker.transcribe_pcm(bytes(32000), partial=True)
+        await worker.transcribe_pcm(bytes(32000), partial=False)
+    asyncio.run(exercise())
+    assert modes == [False, True]
+    assert worker.capabilities()['final_vad'] == 'silero'
