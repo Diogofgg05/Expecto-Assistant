@@ -365,10 +365,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def quality_summary(limit: int = 25):
         return engine.quality.overview(limit)
 
+    @app.get('/api/performance/status')
+    async def performance_status():
+        # Only anonymous, bounded in-memory aggregates. Never expose the
+        # prompt, retrieved memories, output or private context.
+        return {'mode': settings.performance_mode,
+                'metrics': engine.llm.metrics.summary()}
+
     @app.get('/api/config')
     async def config():
         return {'voice_output': settings.voice_output,
                 'model': settings.ollama_model,
+                'performance_mode': settings.performance_mode,
                 'research_interval_hours': settings.research_interval_hours,
                 'advanced_learning': db.get_option('advanced_learning_enabled','false')=='true',
                 'memory_months': settings.episodic_lookback_months,
