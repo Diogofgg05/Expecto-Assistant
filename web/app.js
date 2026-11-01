@@ -134,6 +134,15 @@
     }else if(name==='diagnostics'){
       const llm=data?.ollama||{};
       stat(body,'API EXPECTO','OPERACIONAL');stat(body,'Ollama',llm.available?'LIGADO':'INDISPONÍVEL');
+      const perf=data?.performance||{};
+      const perfTimes=perf.latency_ms||{};
+      const fmtTime=(item)=>item?.median==null?'—':item.median+' ms (P95 '+item.p95+' ms)';
+      stat(body,'Motor de desempenho',data?.performance_mode||'—');
+      stat(body,'Amostras de desempenho',perf.sample_count??0);
+      stat(body,'Tempo até primeiro token',fmtTime(perfTimes.first_token));
+      stat(body,'Tempo total de resposta',fmtTime(perfTimes.total));
+      stat(body,'Preparação de contexto',fmtTime(perfTimes.preparation));
+      stat(body,'Pedidos de inferência falhados',perf.failed_requests??0);
       stat(body,'Modelo configurado',llm.selected||'—');stat(body,'Modelo instalado',llm.selected_installed?'SIM':'NÃO / DESCONHECIDO');
       stat(body,'Modelos detetados',llm.models?.join(', ')||'—');stat(body,'Memórias locais',data?.memory_count??'—');
       stat(body,'Mensagens (janela)',data?.episodes_6months??'—');stat(body,'Gravação automática',data?.episodic_capture?'ATIVA':'INATIVA');stat(body,'Meses de recordação',data?.memory_months??'—');
