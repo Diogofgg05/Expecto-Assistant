@@ -173,9 +173,10 @@
     const chunk = pending.slice(0, limit);
     // Only complete sentences: don't split decimal numbers such as 3.14.
     const marks = /[.!?;:\n](?=\s|$)/g;
-    let match, last = 0;
-    while ((match = marks.exec(chunk))) last = match.index + 1;
-    if (last) return last;
+    // Speak the FIRST complete sentence; picking the last punctuation
+    // caused whole paragraphs to become a single blocking TTS request.
+    const first = marks.exec(chunk);
+    if (first) return first.index + 1;
     if (pending.length >= SOFT_SPLIT || force) {
       const space = chunk.lastIndexOf(' ');
       return space > 36 ? space : (force || pending.length >= MAX_CHUNK ? limit : 0);
