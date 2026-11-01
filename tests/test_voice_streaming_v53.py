@@ -48,3 +48,44 @@ def test_existing_nonstream_endpoint_still_works(tmp_path):
         response = client.post('/api/command', json={'message': 'Abre a memória'})
         assert response.status_code == 200
         assert response.json()['action']['panel'] == 'memory'
+
+
+def test_full_stream_survives_bounded_queue_pressure(tmp_path):
+    app = create_app(Settings(data_dir=tmp_path, database_encryption_required=False))
+    async def many_tokens(question, history, *, on_token=None):
+        for _ in range(220):
+            await on_token('A')
+        return 'A' * 220
+    app.state.engine.llm.reply = many_tokens
+    with TestClient(app) as client:
+        response = client.post('/api/command/stream', json={'message': 'Uma pergunta nova sobre IA.'})
+        assert response.status_code == 200
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        assert [event['type'] for event in events].count('token') == 220
+        assert events[-1]['type'] == 'final'
+        assert events[-1]['payload']['text'] == 'A' * 220
+
+
+def test_failed_stream_does_not_save_partial_response(tmp_path):
+    app = create_app(Settings(data_dir=tmp_path, database_encryption_required=False))
+    async def failed_reply(question, history, *, on_token=None):
+        await on_token('Resposta incompleta...')
+        raise RuntimeError('stream disconnected mid-response')
+    app.state.engine.llm.reply = failed_reply
+    with TestClient(app) as client:
+        response = client.post('/api/command/stream', json={
+            'message': 'Explica uma nova linguagem de programação.', 'session_id': 'failed-test'
+        })
+        assert response.status_code == 200
+        events = [json.loads(line) for line in response.text.splitlines() if line]
+        assert [event['type'] for event in events] == ['token', 'error']
+        assert app.state.db.episode_count(6) == 0
+
+
+def test_model_residency_setting_is_validated(monkeypatch):
+    monkeypatch.setenv('AURA_OLLAMA_KEEP_ALIVE', '0m')
+    assert Settings.from_env().ollama_keep_alive == '0m'
+    monkeypatch.setenv('AURA_OLLAMA_KEEP_ALIVE', '20m')
+    assert Settings.from_env().ollama_keep_alive == '20m'
+    monkeypatch.setenv('AURA_OLLAMA_KEEP_ALIVE', 'bad value')
+    assert Settings.from_env().ollama_keep_alive == '10m'
