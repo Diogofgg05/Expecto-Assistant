@@ -1,3 +1,11 @@
+## 6.4.0 — Consolidated Voice & Ultra Performance (integration candidate)
+- Consolida alterações de voz e desempenho das branches 5.3 a 6.3; não implica modelos de voz instalados ou validados em hardware real.
+- HTTP Ollama assíncrono persistente com ligações limitadas e encerramento no lifespan.
+- Métricas reais de tokens/s do Ollama (quando devolvidas), sem guardar prompts.
+- Testes de regressão e atualização de versão da API.
+- Otimização inspirada nos princípios de transporte de OpenJarvis; implementação original, sem copiar código fonte.
+- Não há benchmark comparativo real nem prova de ganho absoluto de latência.
+
 ## 5.2 — Hybrid Research & Verified Reasoning
 - Orquestrador limitado: planeamento de consultas + RAG híbrido e opcional pesquisa externa SearXNG local.
 - Proveniência por livro/página/hash, web classificada como pré-visualização não verificada.

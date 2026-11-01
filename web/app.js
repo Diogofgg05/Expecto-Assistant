@@ -11,7 +11,8 @@
   const input=document.getElementById('command-input');
   const clock=document.getElementById('clock');
   const state={panels:new Map(),busy:false,listening:false,recognition:null,
-               history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43};
+               history:[],sessionId:sessionStorage.getItem('aura_session_id')||'',voiceOutput:true,hideTranscript:null,width:43,
+               request:null,autoListen:false};
   if(!state.sessionId){state.sessionId=(window.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));sessionStorage.setItem('aura_session_id',state.sessionId);}
   const LABELS={memory:'MEMÓRIA',research:'CONHECIMENTO',browser:'BROWSER · FONTES',
                 jobs:'INVESTIGAÇÕES AUTÓNOMAS',patronum:'PATRONUM · NÚCLEO AVANÇADO',diagnostics:'DIAGNÓSTICOS',projects:'PROJETOS'};
@@ -22,15 +23,19 @@
     state.hideTranscript=setTimeout(()=>transcript.classList.remove('visible'),Math.min(12500,4300+text.length*28));
   }
   function speech(text){
-    if(!state.voiceOutput||!text||!('speechSynthesis' in window))return;
-    try{
-      speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text.slice(0,450));
-      u.lang='pt-PT';u.rate=1.03;u.pitch=.94;
-      const voices=speechSynthesis.getVoices();const pt=voices.find(v=>v.lang.toLowerCase()==='pt-pt')||voices.find(v=>v.lang.toLowerCase().startsWith('pt'));
-      if(pt)u.voice=pt;
-      u.onstart=()=>setMode('speaking');u.onend=()=>setMode('idle');u.onerror=()=>setMode('idle');
-      speechSynthesis.speak(u);
-    }catch(_){setMode('idle');}
+    if(!state.voiceOutput || !text){setMode('idle');return;}
+    const voice=window.ExpectoVoice;
+    if(!voice?.supported){setMode('idle');return;}
+    voice.speak(text,{
+      onStart:()=>setMode('speaking'),
+      onEnd:()=>{setMode('idle');if(state.autoListen&&!state.busy)voiceInput(true);}
+    });
+  }
+  function interrupt(){
+    state.request?.abort();state.request=null;state.busy=false;
+    window.ExpectoVoice?.cancel();
+    window.speechSynthesis?.cancel();
+    setMode('idle');
   }
   function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=String(text);return node;}
   function item(body,title,meta){const n=el('article','k-item');n.append(el('div','k-title',title));if(body)n.append(el('div','k-body',body));if(meta)n.append(el('div','k-meta',meta));return n;}
@@ -129,6 +134,15 @@
     }else if(name==='diagnostics'){
       const llm=data?.ollama||{};
       stat(body,'API EXPECTO','OPERACIONAL');stat(body,'Ollama',llm.available?'LIGADO':'INDISPONÍVEL');
+      const perf=data?.performance||{};
+      const perfTimes=perf.latency_ms||{};
+      const fmtTime=(item)=>item?.median==null?'—':item.median+' ms (P95 '+item.p95+' ms)';
+      stat(body,'Motor de desempenho',data?.performance_mode||'—');
+      stat(body,'Amostras de desempenho',perf.sample_count??0);
+      stat(body,'Tempo até primeiro token',fmtTime(perfTimes.first_token));
+      stat(body,'Tempo total de resposta',fmtTime(perfTimes.total));
+      stat(body,'Preparação de contexto',fmtTime(perfTimes.preparation));
+      stat(body,'Pedidos de inferência falhados',perf.failed_requests??0);
       stat(body,'Modelo configurado',llm.selected||'—');stat(body,'Modelo instalado',llm.selected_installed?'SIM':'NÃO / DESCONHECIDO');
       stat(body,'Modelos detetados',llm.models?.join(', ')||'—');stat(body,'Memórias locais',data?.memory_count??'—');
       stat(body,'Mensagens (janela)',data?.episodes_6months??'—');stat(body,'Gravação automática',data?.episodic_capture?'ATIVA':'INATIVA');stat(body,'Meses de recordação',data?.memory_months??'—');
@@ -171,7 +185,7 @@
   }
   function closePanel(name){const p=state.panels.get(name);if(p){p.remove();state.panels.delete(name);}layout();}
   function closeAll(){for(const p of state.panels.values())p.remove();state.panels.clear();layout();}
-  function respond(payload){
+  function respond(payload, streamed=false){
     if(payload.action?.type==='patronum'){
       app.classList.add('patronum');openPanel('patronum',payload.data);
     }else if(payload.action?.type==='patronum_off'){
@@ -185,45 +199,155 @@
       const p=state.panels.get(payload.action.panel);if(p){panels.append(p);state.panels.delete(payload.action.panel);state.panels.set(payload.action.panel,p);}
     }
     if(payload.text)sayText(payload.text);
-    if(payload.spoken)speech(payload.spoken);else setMode('idle');
+    if(!streamed){if(payload.spoken)speech(payload.spoken);else setMode('idle');}
   }
-  async function send(command){
-    if(state.busy)return;
+  async function send(command, {fromVoice=false}={}){
+    if(state.busy)interrupt();
+    if(!fromVoice)state.autoListen=false;
     const msg=(command||'').trim();if(!msg)return;
+    window.ExpectoVoice?.cancel();
+    const controller=new AbortController();state.request=controller;
     state.busy=true;setMode('thinking');sayText('A analisar: '+msg);
     shell.hidden=true;input.blur();
+    let text='',hasTokens=false,voiceStarted=false,finalPayload=null;
+    const requestOptions={method:'POST',headers:{'Content-Type':'application/json'},
+      signal:controller.signal,
+      body:JSON.stringify({message:msg,history:state.history.slice(-6),session_id:state.sessionId})};
+    function accept(data){
+      if(controller.signal.aborted)return;
+      if(data.type==='token'){
+        const piece=String(data.text||'');
+        if(!piece)return;
+        hasTokens=true;text+=piece;
+        // UI renders generated tokens immediately, not only at completion.
+        transcript.textContent=text;transcript.classList.remove('error');
+        transcript.classList.add('visible');
+        if(state.voiceOutput && window.ExpectoVoice?.supported){
+          if(!voiceStarted){
+            voiceStarted=window.ExpectoVoice.start({
+              onStart:()=>setMode('speaking'),
+              onEnd:()=>{setMode('idle');if(state.autoListen&&!state.busy)voiceInput(true);}
+            });
+          }
+          if(voiceStarted)window.ExpectoVoice.feed(piece);
+        }
+      }else if(data.type==='final'){
+        finalPayload=data.payload;
+      }else if(data.type==='error'){
+        throw new Error(data.message||'Erro no processamento.');
+      }
+    }
     try{
-      const res=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({message:msg,history:state.history.slice(-6),session_id:state.sessionId})});
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      const data=await res.json();respond(data);
-      state.history.push({role:'user',content:msg},{role:'assistant',content:data.text||''});
+      let res=await fetch('/api/command/stream',requestOptions);
+      // Older installs without streaming continue to work.
+      if(res.status===404){
+        res=await fetch('/api/command',requestOptions);
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        finalPayload=await res.json();
+      }else{
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        if(!res.body)throw new Error('Este navegador não suporta streaming HTTP.');
+        const reader=res.body.getReader(),decoder=new TextDecoder();
+        let buffer='',completed=false;
+        while(!completed){
+          const block=await reader.read();completed=block.done;
+          buffer+=decoder.decode(block.value||new Uint8Array(),{stream:!completed});
+          if(buffer.length>1000000)throw new Error('Resposta excedeu o limite permitido.');
+          let newline;
+          while((newline=buffer.indexOf('\n'))>=0){
+            const line=buffer.slice(0,newline).trim();buffer=buffer.slice(newline+1);
+            if(line)accept(JSON.parse(line));
+          }
+        }
+        if(buffer.trim())accept(JSON.parse(buffer));
+        if(!finalPayload)throw new Error('Resposta interrompida.');
+      }
+      respond(finalPayload,hasTokens);
+      if(hasTokens){
+        if(voiceStarted && finalPayload.spoken)window.ExpectoVoice.finish();
+        else{window.ExpectoVoice?.cancel();setMode('idle');}
+      }
+      state.history.push({role:'user',content:msg},{role:'assistant',content:finalPayload.text||''});
       state.history=state.history.slice(-10);
-    }catch(err){setMode('idle');sayText('Sem ligação à Expecto. Verifica se o servidor está iniciado. ('+err.message+')',true);}
-    finally{state.busy=false;}
+    }catch(err){
+      if(state.request===controller)window.ExpectoVoice?.cancel();
+      if(err.name!=='AbortError'&&!controller.signal.aborted){
+        setMode('idle');
+        sayText('Sem ligação à Expecto ou resposta incompleta. ('+err.message+')',true);
+      }
+    }finally{
+      if(state.request===controller){state.request=null;state.busy=false;}
+    }
   }
   function edit(){shell.hidden=false;input.focus();}
-  function voice(){
-    if(state.busy)return;
-    if(state.listening){state.recognition?.stop();return;}
+  async function voiceInput(automatic=false){
+    if(state.busy)interrupt(); // The user's voice interrupts model + TTS.
+    if(state.listening || window.ExpectoLocalSTT?.active){
+      state.autoListen=false;state.recognition?.abort();window.ExpectoLocalSTT?.cancel();state.listening=false;setMode('idle');return;
+    }
+    if(!automatic)state.autoListen=true;
+    window.ExpectoVoice?.cancel();
+    if(window.ExpectoLocalSTT){
+      const usedLocal=await window.ExpectoLocalSTT.start({
+        onStatus(mode){
+          if(mode==='listening'){
+            state.listening=true;setMode('listening');sayText('Estou a ouvir (Whisper local)...');
+          }else if(mode==='transcribing'){
+            state.listening=false;setMode('thinking');sayText('A transcrever localmente...');
+          }else if(mode==='idle'){
+            state.listening=false;state.autoListen=false;setMode('idle');
+          }
+        },
+        onPartial(text){if(state.listening&&text)sayText('A ouvir: '+text);},
+        onResult(text){
+          state.listening=false;
+          if(text && state.autoListen)send(text,{fromVoice:true});
+          else{state.autoListen=false;setMode('idle');}
+        },
+        onError(error){
+          state.listening=false;state.autoListen=false;setMode('idle');
+          sayText('Microfone local: '+String(error.message||error)+'. Usa / para escrever.',true);
+        }
+      });
+      if(usedLocal) return;
+    }
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!Recognition){sayText('Este navegador não suporta reconhecimento de voz. Usa / para escrever.',true);return;}
+    if(!Recognition){
+      state.autoListen=false;
+      sayText('Reconhecimento de voz indisponível neste navegador. Usa / para escrever.',true);
+      return;
+    }
+    window.ExpectoVoice?.cancel();
     window.speechSynthesis?.cancel();
     const rec=new Recognition();state.recognition=rec;
     rec.lang='pt-PT';rec.interimResults=true;rec.continuous=false;
-    rec.onstart=()=>{state.listening=true;setMode('listening');sayText('Estou a ouvir...');};
     let final='';
+    rec.onstart=()=>{state.listening=true;setMode('listening');sayText('Estou a ouvir...');};
     rec.onresult=(event)=>{
-      let partial='';for(let i=event.resultIndex;i<event.results.length;i++){
+      let partial='';
+      for(let i=event.resultIndex;i<event.results.length;i++){
         const content=event.results[i][0].transcript;
         if(event.results[i].isFinal)final+=content+' ';else partial+=content+' ';
       }
       sayText((final+partial).trim()||'Estou a ouvir...');
     };
-    rec.onerror=(event)=>{if(event.error!=='no-speech'&&event.error!=='aborted')sayText('Microfone: '+event.error+'. Usa / para escrever.',true);};
-    rec.onend=()=>{state.listening=false;setMode('idle');const command=final.trim();if(command)send(command);};
-    try{rec.start();}catch{state.listening=false;setMode('idle');sayText('Não foi possível iniciar o microfone.',true);}
+    rec.onerror=(event)=>{
+      if(event.error!=='no-speech'&&event.error!=='aborted')
+        sayText('Microfone: '+event.error+'. Usa / para escrever.',true);
+      state.autoListen=false;
+    };
+    rec.onend=()=>{
+      state.listening=false;
+      if(!state.busy)setMode('idle');
+      const command=final.trim();
+      if(command && state.autoListen)send(command,{fromVoice:true});
+      else state.autoListen=false;
+    };
+    try{rec.start();}
+    catch{state.listening=false;state.autoListen=false;setMode('idle');sayText('Não foi possível iniciar o microfone.',true);}
   }
+  // Fullscreen, button-free voice activation for touchscreen and desktop.
+  stage.addEventListener('dblclick',()=>voiceInput());
   document.addEventListener('keydown',(e)=>{
     if(e.ctrlKey||e.altKey||e.metaKey)return;
     if(e.target===input){
@@ -232,12 +356,14 @@
       return;
     }
     if(e.key==='/'){e.preventDefault();edit();}
-    if(e.key.toLowerCase()==='v'&&!e.repeat){e.preventDefault();voice();}
-    if(e.key==='Escape'){e.preventDefault();closeAll();window.speechSynthesis?.cancel();setMode('idle');sayText('Modo central.');}
+    if(e.key.toLowerCase()==='v'&&!e.repeat){e.preventDefault();voiceInput();}
+    if(e.key==='Escape'){e.preventDefault();state.autoListen=false;state.recognition?.abort();window.ExpectoLocalSTT?.cancel();state.listening=false;interrupt();closeAll();sayText('Modo central.');}
   });
   function renderClock(){const d=new Date();clock.textContent=d.toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'});}
   renderClock();setInterval(renderClock,10000);
   fetch('/api/config').then(r=>r.json()).then(x=>{state.voiceOutput=!!x.voice_output;}).catch(()=>{});
-  window.addEventListener('beforeunload',()=>window.speechSynthesis?.cancel());
+  fetch('/api/voice/capabilities').then(r=>r.ok?r.json():null)
+    .then(x=>{window.ExpectoVoice?.configure?.({localTTS:!!x?.local_tts});}).catch(()=>{});
+  window.addEventListener('beforeunload',()=>{state.request?.abort();window.ExpectoVoice?.cancel();window.ExpectoLocalSTT?.cancel();});
   window.AuraUI={send,openPanel,closeAll}; // Exposed for local accessibility / developer tests.
 })();

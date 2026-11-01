@@ -1,11 +1,13 @@
 """Single-origin HTTP API + static holographic interface. Localhost by default."""
 from __future__ import annotations
 import asyncio
+import json
 import logging
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 from ipaddress import ip_address
@@ -16,6 +18,8 @@ from .config import Settings, ROOT
 from .database import Database
 from .engine import AuraEngine
 from .security import SecureBackupManager, VaultError
+from .local_voice import LocalVoice, VoiceInvalid, VoiceUnavailable, MAX_WAV_BYTES
+from .persistent_whisper import PersistentWhisper, WhisperOfflineError, MIN_PCM_BYTES, MAX_PCM_BYTES
 
 
 class Message(BaseModel):
@@ -24,11 +28,17 @@ class Message(BaseModel):
     session_id: str = Field(default="", max_length=64)
 
 
+class VoiceText(BaseModel):
+    text: str = Field(min_length=1, max_length=240)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = Database(settings.data_dir / 'aura.sqlite3', passphrase=settings.database_passphrase,
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
+    local_voice = LocalVoice(settings)
+    persistent_whisper = PersistentWhisper(settings)
     secure = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
 
     @asynccontextmanager
@@ -56,8 +66,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for task in (worker, memory_worker, backups):
             with suppress(asyncio.CancelledError):
                 await task
+        await engine.llm.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='3.3.0-fact-verification', lifespan=lifespan)
+    app = FastAPI(title='Expecto Ultimate API', version='6.4.0', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
@@ -101,16 +112,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '3.3.0-fact-verification',
+        return {'status': 'ok', 'version': '6.4.0',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
-    @app.post('/api/command')
-    async def command(payload: Message):
-        result = await engine.command(payload.message, payload.history)
+    def finalize_command(payload: Message, result: dict) -> dict:
+        """Capture once, only after a complete response (never partial tokens)."""
         if (result.get('capture') and db.capture_enabled(settings.episodic_capture) and
             db.get_option('private_mode','false') != 'true'):
-            # Sensitive-looking inputs are not captured automatically; do not retain
-            # passwords, API keys or payment-card numbers by accident.
             from .privacy import safe_to_capture
             if safe_to_capture(payload.message):
                 episodes = db.record_exchange(payload.session_id, payload.message, result.get('text',''))
@@ -121,6 +129,191 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         engine.relations.observe_episode(episodes[0]['id'])
         result.pop('capture', None)
         return result
+
+    @app.post('/api/command')
+    async def command(payload: Message):
+        return finalize_command(payload, await engine.command(payload.message, payload.history))
+
+    @app.post('/api/command/stream')
+    async def command_stream(payload: Message):
+        """Backpressure-aware NDJSON. The usual intent router remains authoritative.
+
+        Events: token{text}, final{payload}, error{message}. Disconnecting
+        cancels in-flight model generation; incomplete exchanges are not saved.
+        """
+        async def generate():
+            queue = asyncio.Queue(maxsize=128)
+            began = time.perf_counter()
+            first_token = None
+
+            async def on_token(piece: str):
+                nonlocal first_token
+                if first_token is None:
+                    first_token = time.perf_counter()
+                await queue.put({'type': 'token', 'text': piece})
+
+            async def work():
+                try:
+                    result = await engine.command(payload.message, payload.history, on_token=on_token)
+                    result = finalize_command(payload, result)
+                    await queue.put({'type': 'final', 'payload': result,
+                                     'metrics': {
+                                         'ttft_ms': round((first_token - began) * 1000, 1)
+                                                    if first_token is not None else None,
+                                         'total_ms': round((time.perf_counter() - began) * 1000, 1)
+                                     }})
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logging.getLogger('aura').exception('Streaming command failed')
+                    await queue.put({'type': 'error',
+                                     'message': 'Não foi possível concluir a resposta.'})
+                finally:
+                    # Under normal completion flush every token, including a full queue.
+                    # If the HTTP reader disconnects, the producer is cancelled;
+                    # do not wait for an abandoned queue.
+                    if not asyncio.current_task().cancelling():
+                        await queue.put(None)
+
+            task = asyncio.create_task(work())
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is None:
+                        break
+                    yield json.dumps(event, ensure_ascii=False, separators=(',', ':')) + '\n'
+            finally:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+
+        return StreamingResponse(generate(), media_type='application/x-ndjson',
+                                 headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-store'})
+
+    @app.get('/api/voice/capabilities')
+    async def voice_capabilities():
+        """Feature detection without exposing private machine paths."""
+        return {**local_voice.capabilities(), **persistent_whisper.capabilities()}
+
+    @app.websocket('/api/voice/continuous')
+    async def continuous_voice(websocket: WebSocket):
+        """One explicit local connection; PCM blocks, bounded partial updates.
+
+        Client sends little-endian PCM16 byte frames, and JSON {"type":"flush"}
+        to finalize a turn. A partial is returned at most once per 2 seconds
+        after enough audio, without reloading the model.
+        """
+        from ipaddress import ip_address
+        peer = websocket.client.host if websocket.client else ''
+        try:
+            local_peer = ip_address(peer).is_loopback
+        except ValueError:
+            local_peer = peer == 'testclient'
+        origin = websocket.headers.get('origin')
+        if (not local_peer or (origin and origin not in (
+                'http://127.0.0.1:8000', 'http://localhost:8000',
+                f'http://{settings.host}:{settings.port}'))):
+            await websocket.close(code=1008)
+            return
+        if not persistent_whisper.available:
+            await websocket.close(code=1013)
+            return
+        await websocket.accept()
+        pcm = bytearray()
+        last_partial_at = time.monotonic()
+        partial_task = None
+        generation = 0
+        async def partial_result(audio: bytes, sequence: int):
+            try:
+                result = await persistent_whisper.transcribe_pcm(audio, partial=True)
+                if sequence == generation:
+                    await websocket.send_json({'type': 'partial', **result})
+            except (WhisperOfflineError, WebSocketDisconnect, RuntimeError):
+                pass
+        try:
+            while True:
+                message = await websocket.receive()
+                if message['type'] == 'websocket.disconnect':
+                    break
+                raw = message.get('bytes')
+                if raw is not None:
+                    if len(raw) % 2 or len(pcm) + len(raw) > MAX_PCM_BYTES:
+                        await websocket.send_json({'type':'error','reason':'audio_limit'})
+                        await websocket.close(code=1009)
+                        return
+                    pcm.extend(raw)
+                    # At most one partial per ~2 s to protect old CPUs.
+                    if len(pcm) >= 2 * 16000 * 2 and time.monotonic() - last_partial_at >= 2:
+                        last_partial_at = time.monotonic()
+                        sample = bytes(pcm[-min(len(pcm), 5 * 16000 * 2):])
+                        if partial_task is None or partial_task.done():
+                            partial_task = asyncio.create_task(partial_result(sample, generation))
+                elif message.get('text'):
+                    try:
+                        command = json.loads(message['text'])
+                    except (ValueError, TypeError):
+                        await websocket.close(code=1003)
+                        return
+                    if command.get('type') == 'flush':
+                        generation += 1  # Prevent stale provisional text after final result.
+                        if partial_task is not None:
+                            partial_task.cancel()
+                        if len(pcm) >= MIN_PCM_BYTES:
+                            try:
+                                result = await persistent_whisper.transcribe_pcm(bytes(pcm))
+                                await websocket.send_json({'type':'final', **result})
+                            except WhisperOfflineError:
+                                await websocket.send_json({'type':'error','reason':'transcription_failed'})
+                        else:
+                            await websocket.send_json({'type':'final','text':'','partial':False})
+                        pcm.clear()
+                    elif command.get('type') == 'cancel':
+                        generation += 1
+                        if partial_task is not None: partial_task.cancel()
+                        pcm.clear()
+                    else:
+                        await websocket.close(code=1003)
+                        return
+        except WebSocketDisconnect:
+            pass
+        finally:
+            if partial_task is not None:
+                partial_task.cancel()
+
+    @app.post('/api/voice/transcribe')
+    async def voice_transcribe(request: Request):
+        """Accept only bounded WAV PCM input. Never upload to a third party."""
+        if not local_voice.stt_available:
+            raise HTTPException(503, 'Whisper local não está configurado.')
+        if request.headers.get('content-type', '').split(';', 1)[0].lower() != 'audio/wav':
+            raise HTTPException(415, 'Envia áudio WAV PCM16 mono 16 kHz.')
+        size = 0
+        pieces = []
+        async for piece in request.stream():
+            size += len(piece)
+            if size > MAX_WAV_BYTES:
+                raise HTTPException(413, 'Gravação demasiado grande.')
+            pieces.append(piece)
+        try:
+            return await local_voice.transcribe(b''.join(pieces))
+        except VoiceInvalid as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except VoiceUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+    @app.post('/api/voice/synthesize')
+    async def voice_synthesize(payload: VoiceText):
+        """Optional local PCM voice output for short text segments."""
+        if not local_voice.tts_available:
+            raise HTTPException(503, 'Piper local não está configurado.')
+        try:
+            wav = await local_voice.synthesize(payload.text)
+        except VoiceInvalid as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except VoiceUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return Response(wav, media_type='audio/wav',
+                        headers={'Cache-Control': 'no-store'})
 
     @app.get('/api/panel/{name}')
     async def panel(name: str):
@@ -260,10 +453,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def quality_summary(limit: int = 25):
         return engine.quality.overview(limit)
 
+    @app.get('/api/performance/status')
+    async def performance_status():
+        # Only anonymous, bounded in-memory aggregates. Never expose the
+        # prompt, retrieved memories, output or private context.
+        return {'mode': settings.performance_mode,
+                'metrics': engine.llm.metrics.summary()}
+
     @app.get('/api/config')
     async def config():
         return {'voice_output': settings.voice_output,
                 'model': settings.ollama_model,
+                'performance_mode': settings.performance_mode,
                 'research_interval_hours': settings.research_interval_hours,
                 'advanced_learning': db.get_option('advanced_learning_enabled','false')=='true',
                 'memory_months': settings.episodic_lookback_months,

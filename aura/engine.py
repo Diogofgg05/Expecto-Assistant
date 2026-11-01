@@ -50,7 +50,7 @@ class AuraEngine:
         self.reflection = ReflectionEngine(db)
         self.llm = Ollama(settings, db, self.memory)
 
-    async def command(self, original: str, history: list[dict] | None = None) -> dict:
+    async def command(self, original: str, history: list[dict] | None = None, *, on_token=None) -> dict:
         original = original.strip()
         original = re.sub(r'^(?:aura|expecto)[,\s:]+', '', original, flags=re.I).strip()
         key = normalized(original).rstrip('.!?')
@@ -733,8 +733,8 @@ class AuraEngine:
             result['capture'] = True
             return result
 
-        text = await self.llm.reply(original, history)
-        result = reply(text, speak=len(text) < 500)
+        text = await self.llm.reply(original, history, on_token=on_token)
+        result = reply(text, speak=len(text) < 500 or on_token is not None)
         result['capture'] = True  # Save only actual conversations, never CRUD/control commands.
         return result
 
@@ -766,7 +766,9 @@ class AuraEngine:
         if panel == 'jobs':
             return self.db.jobs()
         if panel == 'diagnostics':
-            return {'ollama': await self.llm.health(), 'memory_count': len(self.db.memories(100)),
+            return {'ollama': await self.llm.health(), 'performance': self.llm.metrics.summary(),
+                    'performance_mode': self.settings.performance_mode,
+                    'memory_count': len(self.db.memories(100)),
                     'knowledge_count': len(self.db.documents(limit=200)),
                     'episodes_6months': self.db.episode_count(self.settings.episodic_lookback_months),
                     'episodic_capture': self.db.capture_enabled(self.settings.episodic_capture),

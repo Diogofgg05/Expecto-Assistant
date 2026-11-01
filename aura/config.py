@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
+import re
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -28,6 +29,14 @@ class Settings:
     data_dir: Path = ROOT / 'data'
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'hermes3'
+    ollama_keep_alive: str = '10m'
+    performance_mode: str = 'balanced'
+    voice_whisper_binary: str = ''
+    voice_whisper_model: str = ''
+    voice_whisper_persistent_model: str = ''
+    voice_piper_binary: str = ''
+    voice_piper_model: str = ''
+    voice_piper_inprocess: bool = False  # Opt-in, retains Piper model in RAM.
     embedding_model: str = ''
     searxng_url: str = ''
     research_interval_hours: int = 24
@@ -55,6 +64,17 @@ class Settings:
             data_dir=directory,
             ollama_url=os.getenv('AURA_OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/'),
             ollama_model=os.getenv('AURA_OLLAMA_MODEL', 'hermes3'),
+            # 0m saves RAM, 10m avoids costly model reload between turns.
+            ollama_keep_alive=(lambda value: value if re.fullmatch(r'(?:0|[1-9][0-9]?)m', value)
+                               else '10m')(os.getenv('AURA_OLLAMA_KEEP_ALIVE', '10m').strip()),
+            performance_mode=(lambda value: value if value in ('balanced', 'conservative', 'off')
+                              else 'balanced')(os.getenv('AURA_PERFORMANCE_MODE', 'balanced').strip().lower()),
+            voice_whisper_binary=os.getenv('AURA_VOICE_WHISPER_BINARY', ''),
+            voice_whisper_model=os.getenv('AURA_VOICE_WHISPER_MODEL', ''),
+            voice_whisper_persistent_model=os.getenv('AURA_VOICE_WHISPER_PERSISTENT_MODEL', ''),
+            voice_piper_binary=os.getenv('AURA_VOICE_PIPER_BINARY', ''),
+            voice_piper_model=os.getenv('AURA_VOICE_PIPER_MODEL', ''),
+            voice_piper_inprocess=os.getenv('AURA_VOICE_PIPER_INPROCESS', 'false').lower() in ('true', '1', 'yes'),
             embedding_model=os.getenv('AURA_EMBEDDING_MODEL', ''),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
