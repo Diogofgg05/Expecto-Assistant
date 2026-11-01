@@ -1,3 +1,11 @@
+## 6.5.0 — Ollama Adaptive Inference 2.0 (measurable optimization)
+- Um único embedding por pergunta partilhado entre recuperação de notas e episódios: teste controlado **2 pedidos antes → 1 depois**; a cache é temporária e por consulta.
+- Cliente HTTP persistente para embeddings, encerrado no shutdown.
+- Modelos Ollama FAST e DEEP opcionais, seleção pelo perfil real e fallback para o modelo principal em 404.
+- Em FAST, opção `think=false` para perguntas gerais simples; DEEP mantém o raciocínio original.
+- Testes de regressão e benchmark real de dois modelos disponível em `scripts/benchmark_adaptive_models.py`.
+- Ganhos de velocidade com modelos reais **não medidos** no hardware do utilizador. O teste de chamadas não equivale a melhoria de latência.
+
 ## 6.4.0 — Consolidated Voice & Ultra Performance (integration candidate)
 - Consolida alterações de voz e desempenho das branches 5.3 a 6.3; não implica modelos de voz instalados ou validados em hardware real.
 - HTTP Ollama assíncrono persistente com ligações limitadas e encerramento no lifespan.
