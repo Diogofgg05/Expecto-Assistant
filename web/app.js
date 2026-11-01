@@ -205,6 +205,7 @@
       signal:controller.signal,
       body:JSON.stringify({message:msg,history:state.history.slice(-6),session_id:state.sessionId})};
     function accept(data){
+      if(controller.signal.aborted)return;
       if(data.type==='token'){
         const piece=String(data.text||'');
         if(!piece)return;
@@ -260,7 +261,7 @@
       state.history.push({role:'user',content:msg},{role:'assistant',content:finalPayload.text||''});
       state.history=state.history.slice(-10);
     }catch(err){
-      window.ExpectoVoice?.cancel();
+      if(state.request===controller)window.ExpectoVoice?.cancel();
       if(err.name!=='AbortError'&&!controller.signal.aborted){
         setMode('idle');
         sayText('Sem ligação à Expecto ou resposta incompleta. ('+err.message+')',true);
@@ -273,7 +274,7 @@
   function voiceInput(automatic=false){
     if(state.busy)interrupt(); // The user's voice interrupts model + TTS.
     if(state.listening){
-      state.autoListen=false;state.recognition?.stop();return;
+      state.autoListen=false;state.recognition?.abort();return;
     }
     if(!automatic)state.autoListen=true;
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -305,12 +306,14 @@
       state.listening=false;
       if(!state.busy)setMode('idle');
       const command=final.trim();
-      if(command)send(command,{fromVoice:true});
+      if(command && state.autoListen)send(command,{fromVoice:true});
       else state.autoListen=false;
     };
     try{rec.start();}
     catch{state.listening=false;state.autoListen=false;setMode('idle');sayText('Não foi possível iniciar o microfone.',true);}
   }
+  // Fullscreen, button-free voice activation for touchscreen and desktop.
+  stage.addEventListener('dblclick',()=>voiceInput());
   document.addEventListener('keydown',(e)=>{
     if(e.ctrlKey||e.altKey||e.metaKey)return;
     if(e.target===input){
