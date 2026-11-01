@@ -93,7 +93,17 @@ class Ollama:
         reflection_context = ReflectionEngine(self.db).approved_context() if profile.retrieve_personal else ''
         # Never truncate SYSTEM or the approved identity. Secondary retrieved
         # content is the only material subject to budget limits.
-        context = bound_context(context, profile.context_limit) if profile.retrieve_personal else ''
+        if profile.retrieve_personal and profile.context_limit:
+            # Global budget across all optional retrieval sections, not just
+            # memory. Formerly continuity and reflection could grow unbounded.
+            remaining = profile.context_limit
+            context = bound_context(context, remaining)
+            remaining = max(0, remaining - len(context))
+            continuity_context = bound_context(continuity_context, remaining) if remaining else ''
+            remaining = max(0, remaining - len(continuity_context))
+            reflection_context = bound_context(reflection_context, remaining) if remaining else ''
+        elif not profile.retrieve_personal:
+            context = continuity_context = reflection_context = ''
         context_chars = len(context) + len(continuity_context) + len(reflection_context)
         prep_ms = (time.perf_counter() - started) * 1000
         first_token_at = None
