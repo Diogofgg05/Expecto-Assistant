@@ -1,5 +1,6 @@
 """Ollama is optional; when offline we report the limitation instead of hallucinating."""
 from __future__ import annotations
+import asyncio
 import httpx
 import json
 from .config import Settings
@@ -35,12 +36,18 @@ class Ollama:
                         'selected': self.settings.ollama_model,
                         'selected_installed': any(x.split(':')[0] == self.settings.ollama_model.split(':')[0] for x in models)}
         except (httpx.HTTPError, ValueError):
+            if chunks and on_token is not None:
+                raise
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
 
     async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
-        notes = await self.memory.recall(question, 8)
-        episodes = await self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5)
+        # Notes and episodes are independent reads. Run them concurrently to
+        # reduce retrieval wall time before Ollama begins generating.
+        notes, episodes = await asyncio.gather(
+            self.memory.recall(question, 8),
+            self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5),
+        )
         # Never include unbounded external data in the prompt.
         knowledge = self.db.documents(query=question, limit=4)
         from .learning import LearningEngine
@@ -82,12 +89,14 @@ class Ollama:
             if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
                 messages.append({'role': x['role'], 'content': x['content'][:1500]})
         messages.append({'role': 'user', 'content': question[:2000]})
+        chunks = []
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(65.0, connect=3.0)) as client:
                 payload = {
                     'model': self.settings.ollama_model,
                     'messages': messages,
                     'stream': on_token is not None,
+                    'keep_alive': self.settings.ollama_keep_alive,
                     'options': {'num_predict': 450, 'temperature': 0.45},
                 }
                 if on_token is None:
@@ -100,7 +109,6 @@ class Ollama:
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
                 # Ollama emits newline-delimited JSON. Relay each generated token
                 # immediately; keep exact concatenated text for memory capture.
-                chunks = []
                 async with client.stream('POST', self.settings.ollama_url + '/api/chat',
                                          json=payload) as resp:
                     if resp.status_code == 404:
@@ -119,10 +127,14 @@ class Ollama:
                             await on_token(piece)
                 return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
         except httpx.ConnectError:
+            if chunks and on_token is not None:
+                raise  # Partial response: never persist as a completed exchange.
             return ('Não consigo contactar o Ollama. Abre o Ollama, confirma que '
                     'está a executar e tenta novamente. Os comandos da interface '
                     'e a memória local continuam disponíveis.')
         except httpx.TimeoutException:
+            if chunks and on_token is not None:
+                raise
             return ('Ollama excedeu o tempo de resposta. Experimenta um modelo '
                     'mais pequeno ou verifica a memória RAM e a utilização da CPU.')
         except (httpx.HTTPError, ValueError):
