@@ -49,6 +49,6 @@ jobs:
           node --check web/audio-pipeline.js
           node --check web/capture-worklet.js
       - name: Streaming API regression
-        run: python -m pytest -q tests/test_voice_streaming_v53.py tests/test_local_voice_v55.py tests/test_piper_persistent_v57.py tests/test_performance_engine_v60.py tests/test_whisper_continuous_v61.py tests/test_ollama_pool_release_v64.py tests/test_adaptive_inference_v65.py tests/test_api.py tests/test_engine.py
+        run: python -m pytest -q tests/test_voice_streaming_v53.py tests/test_local_voice_v55.py tests/test_piper_persistent_v57.py tests/test_performance_engine_v60.py tests/test_whisper_continuous_v61.py tests/test_ollama_pool_release_v64.py tests/test_adaptive_inference_v65.py tests/test_memory_v21.py tests/test_memory_v22.py tests/test_api.py tests/test_engine.py
       - name: Browser speech regression
         run: node --test tests/test_voice_browser_v54.cjs tests/test_voice_prefetch_v56.cjs tests/test_audio_pipeline_v62.cjs
