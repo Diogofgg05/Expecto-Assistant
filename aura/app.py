@@ -1,11 +1,12 @@
 """Single-origin HTTP API + static holographic interface. Localhost by default."""
 from __future__ import annotations
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 from ipaddress import ip_address
@@ -104,13 +105,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {'status': 'ok', 'version': '3.3.0-fact-verification',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
-    @app.post('/api/command')
-    async def command(payload: Message):
-        result = await engine.command(payload.message, payload.history)
+    def finalize_command(payload: Message, result: dict) -> dict:
+        """Capture once, only after a complete response (never partial tokens)."""
         if (result.get('capture') and db.capture_enabled(settings.episodic_capture) and
             db.get_option('private_mode','false') != 'true'):
-            # Sensitive-looking inputs are not captured automatically; do not retain
-            # passwords, API keys or payment-card numbers by accident.
             from .privacy import safe_to_capture
             if safe_to_capture(payload.message):
                 episodes = db.record_exchange(payload.session_id, payload.message, result.get('text',''))
@@ -121,6 +119,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         engine.relations.observe_episode(episodes[0]['id'])
         result.pop('capture', None)
         return result
+
+    @app.post('/api/command')
+    async def command(payload: Message):
+        return finalize_command(payload, await engine.command(payload.message, payload.history))
+
+    @app.post('/api/command/stream')
+    async def command_stream(payload: Message):
+        """Backpressure-aware NDJSON. The usual intent router remains authoritative.
+
+        Events: token{text}, final{payload}, error{message}. Disconnecting
+        cancels in-flight model generation; incomplete exchanges are not saved.
+        """
+        async def generate():
+            queue = asyncio.Queue(maxsize=128)
+
+            async def on_token(piece: str):
+                await queue.put({'type': 'token', 'text': piece})
+
+            async def work():
+                try:
+                    result = await engine.command(payload.message, payload.history, on_token=on_token)
+                    result = finalize_command(payload, result)
+                    await queue.put({'type': 'final', 'payload': result})
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logging.getLogger('aura').exception('Streaming command failed')
+                    await queue.put({'type': 'error',
+                                     'message': 'Não foi possível concluir a resposta.'})
+                finally:
+                    await queue.put(None)
+
+            task = asyncio.create_task(work())
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is None:
+                        break
+                    yield json.dumps(event, ensure_ascii=False, separators=(',', ':')) + '\n'
+            finally:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+
+        return StreamingResponse(generate(), media_type='application/x-ndjson',
+                                 headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-store'})
 
     @app.get('/api/panel/{name}')
     async def panel(name: str):
