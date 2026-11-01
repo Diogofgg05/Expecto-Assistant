@@ -16,7 +16,7 @@ def wav_bytes(seconds=0.5):
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(16000)
-        wav.writeframes(b'\\x00\\x00' * round(16000 * seconds))
+        wav.writeframes(bytes(round(16000 * seconds) * 2))
     return data.getvalue()
 
 
