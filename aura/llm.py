@@ -159,6 +159,9 @@ class Ollama:
                 'messages': messages,
                 'stream': on_token is not None,
                 'keep_alive': self.settings.ollama_keep_alive,
+                # Skip costly thinking tokens for truly independent definitions.
+                # Only when FAST is selected; never disable reasoning for DEEP.
+                'think': False if profile.name == 'fast' else None,
                 'options': {
                     'num_predict': profile.max_predict,
                     'temperature': 0.35 if profile.name == 'fast' else 0.45,
