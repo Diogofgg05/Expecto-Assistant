@@ -36,8 +36,6 @@ class Ollama:
                         'selected': self.settings.ollama_model,
                         'selected_installed': any(x.split(':')[0] == self.settings.ollama_model.split(':')[0] for x in models)}
         except (httpx.HTTPError, ValueError):
-            if chunks and on_token is not None:
-                raise
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
 
