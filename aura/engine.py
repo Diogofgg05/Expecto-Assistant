@@ -766,7 +766,9 @@ class AuraEngine:
         if panel == 'jobs':
             return self.db.jobs()
         if panel == 'diagnostics':
-            return {'ollama': await self.llm.health(), 'memory_count': len(self.db.memories(100)),
+            return {'ollama': await self.llm.health(), 'performance': self.llm.metrics.summary(),
+                    'performance_mode': self.settings.performance_mode,
+                    'memory_count': len(self.db.memories(100)),
                     'knowledge_count': len(self.db.documents(limit=200)),
                     'episodes_6months': self.db.episode_count(self.settings.episodic_lookback_months),
                     'episodic_capture': self.db.capture_enabled(self.settings.episodic_capture),
