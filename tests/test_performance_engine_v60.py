@@ -19,6 +19,7 @@ from aura.performance import (
 def test_conservative_routing():
     assert choose_profile('O que é Python?') == FAST
     assert choose_profile('Define compilador') == FAST
+    assert choose_profile('O que é Python?', [{'role':'user','content':'No meu projeto'}]) == STANDARD
     assert choose_profile('O que é o meu projeto Expecto?') == STANDARD
     assert choose_profile('O que significa isso?') == STANDARD
     assert choose_profile('O que é o preço atual da eletricidade?') == STANDARD
