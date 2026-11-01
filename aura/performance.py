@@ -71,14 +71,19 @@ def choose_profile(question: str, history=None, *, mode: str = 'balanced') -> Pr
 
 def bound_context(value: str, limit: int) -> str:
     """Restrict retrieved material, never the immutable system safety prompt."""
-    if not value or not limit or len(value) <= limit:
+    if not value or limit <= 0:
+        return ''
+    if len(value) <= limit:
         return value
     # Preserve full lines to avoid dangling URLs or half claims.
-    excerpt = value[:max(0, limit - 96)]
-    last = excerpt.rfind('\n')
+    marker = '\\n[Contexto secundário truncado por limite de processamento.]'
+    if limit <= len(marker):
+        return value[:limit]
+    excerpt = value[:limit - len(marker)]
+    last = excerpt.rfind('\\n')
     if last > limit // 2:
         excerpt = excerpt[:last]
-    return excerpt + '\n[Contexto secundário truncado por limite de processamento.]'
+    return excerpt + marker
 
 
 class PerformanceMonitor:
