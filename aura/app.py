@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
@@ -133,15 +134,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         async def generate():
             queue = asyncio.Queue(maxsize=128)
+            began = time.perf_counter()
+            first_token = None
 
             async def on_token(piece: str):
+                nonlocal first_token
+                if first_token is None:
+                    first_token = time.perf_counter()
                 await queue.put({'type': 'token', 'text': piece})
 
             async def work():
                 try:
                     result = await engine.command(payload.message, payload.history, on_token=on_token)
                     result = finalize_command(payload, result)
-                    await queue.put({'type': 'final', 'payload': result})
+                    await queue.put({'type': 'final', 'payload': result,
+                                     'metrics': {
+                                         'ttft_ms': round((first_token - began) * 1000, 1)
+                                                    if first_token is not None else None,
+                                         'total_ms': round((time.perf_counter() - began) * 1000, 1)
+                                     }})
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -149,7 +160,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await queue.put({'type': 'error',
                                      'message': 'Não foi possível concluir a resposta.'})
                 finally:
-                    await queue.put(None)
+                    # Never wait forever on a full queue when the client leaves.
+                    try:
+                        queue.put_nowait(None)
+                    except asyncio.QueueFull:
+                        pass
 
             task = asyncio.create_task(work())
             try:
