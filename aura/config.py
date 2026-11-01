@@ -33,6 +33,7 @@ class Settings:
     performance_mode: str = 'balanced'
     voice_whisper_binary: str = ''
     voice_whisper_model: str = ''
+    voice_whisper_persistent_model: str = ''
     voice_piper_binary: str = ''
     voice_piper_model: str = ''
     voice_piper_inprocess: bool = False  # Opt-in, retains Piper model in RAM.
@@ -70,6 +71,7 @@ class Settings:
                               else 'balanced')(os.getenv('AURA_PERFORMANCE_MODE', 'balanced').strip().lower()),
             voice_whisper_binary=os.getenv('AURA_VOICE_WHISPER_BINARY', ''),
             voice_whisper_model=os.getenv('AURA_VOICE_WHISPER_MODEL', ''),
+            voice_whisper_persistent_model=os.getenv('AURA_VOICE_WHISPER_PERSISTENT_MODEL', ''),
             voice_piper_binary=os.getenv('AURA_VOICE_PIPER_BINARY', ''),
             voice_piper_model=os.getenv('AURA_VOICE_PIPER_MODEL', ''),
             voice_piper_inprocess=os.getenv('AURA_VOICE_PIPER_INPROCESS', 'false').lower() in ('true', '1', 'yes'),
