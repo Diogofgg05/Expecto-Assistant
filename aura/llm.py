@@ -99,9 +99,21 @@ class Ollama:
         first_token_at = None
         completed = False
         messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
-        for x in (history or [])[-6:]:
-            if x.get('role') in ('user', 'assistant') and isinstance(x.get('content'), str):
-                messages.append({'role': x['role'], 'content': x['content'][:1500]})
+        # Bounded rolling history: newest turns remain, old turns are trimmed
+        # first. No private prompt/response caching; the system prompt is untouched.
+        max_history_chars = 1800 if profile.name == 'fast' else (5200 if profile.name == 'deep' else 3600)
+        selected = []
+        for x in reversed((history or [])[-8:]):
+            if not isinstance(x, dict) or x.get('role') not in ('user', 'assistant') or not isinstance(x.get('content'), str):
+                continue
+            content = x['content'][:1500]
+            if not content:
+                continue
+            available = max_history_chars - sum(len(item['content']) for item in selected)
+            if available < 100:
+                break
+            selected.append({'role': x['role'], 'content': content[:available]})
+        messages.extend(reversed(selected))
         messages.append({'role': 'user', 'content': question[:2000]})
         chunks = []
         try:
