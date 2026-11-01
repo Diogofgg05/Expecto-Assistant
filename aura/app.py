@@ -160,14 +160,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await queue.put({'type': 'error',
                                      'message': 'Não foi possível concluir a resposta.'})
                 finally:
-                    # Never wait forever on a full queue when the client leaves.
-                    try:
-                        queue.put_nowait(None)
-                    except asyncio.QueueFull:
-                        # Ensure termination even when consumer is slower than Ollama.
-                        # At most one provisional token is lost; the final text is complete.
-                        queue.get_nowait()
-                        queue.put_nowait(None)
+                    # Under normal completion flush every token, including a full queue.
+                    # If the HTTP reader disconnects, the producer is cancelled;
+                    # do not wait for an abandoned queue.
+                    if not asyncio.current_task().cancelling():
+                        await queue.put(None)
 
             task = asyncio.create_task(work())
             try:
