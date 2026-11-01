@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
+import re
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -28,6 +29,7 @@ class Settings:
     data_dir: Path = ROOT / 'data'
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'hermes3'
+    ollama_keep_alive: str = '10m'
     embedding_model: str = ''
     searxng_url: str = ''
     research_interval_hours: int = 24
@@ -55,6 +57,9 @@ class Settings:
             data_dir=directory,
             ollama_url=os.getenv('AURA_OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/'),
             ollama_model=os.getenv('AURA_OLLAMA_MODEL', 'hermes3'),
+            # 0m saves RAM, 10m avoids costly model reload between turns.
+            ollama_keep_alive=(lambda value: value if re.fullmatch(r'(?:0|[1-9][0-9]?)m', value)
+                               else '10m')(os.getenv('AURA_OLLAMA_KEEP_ALIVE', '10m').strip()),
             embedding_model=os.getenv('AURA_EMBEDDING_MODEL', ''),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
