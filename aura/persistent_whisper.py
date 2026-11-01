@@ -34,6 +34,7 @@ class PersistentWhisper:
         self.utterances = 0
         self.failures = 0
         self.last_ms = None
+        self._partial_skipped = 0
         # Require a local CTranslate2 model. A whisper.cpp ggml .bin is not
         # interchangeable with a faster-whisper directory.
         if (self.model_dir and self.model_dir.is_dir() and
@@ -60,9 +61,10 @@ class PersistentWhisper:
             'partial_transcripts': True,
             'max_segment_seconds': MAX_SECONDS,
             'engine': 'faster-whisper' if self.available else 'unavailable',
+            'final_vad': 'silero' if self.available else 'disabled',
         }
 
-    def _infer(self, pcm: bytes) -> str:
+    def _infer(self, pcm: bytes, *, partial: bool = False) -> str:
         # Threads may still run after the outer coroutine is cancelled.
         # A thread lock prevents simultaneous use of one model/ONNX session.
         with self._lock:
@@ -76,7 +78,12 @@ class PersistentWhisper:
             audio = np.frombuffer(pcm, dtype='<i2').astype(np.float32) / 32768.0
             segments, _ = self._model.transcribe(
                 audio, language='pt', beam_size=1,
-                condition_on_previous_text=False, vad_filter=False,
+                condition_on_previous_text=False,
+                # faster-whisper bundles Silero VAD. Use it for finalized
+                # turns only; partial 2–5 s windows must remain responsive.
+                vad_filter=not partial,
+                vad_parameters={'min_silence_duration_ms': 500, 'speech_pad_ms': 180}
+                if not partial else None,
             )
             # Iteration actually runs the inference (segments is a generator).
             return ' '.join(segment.text.strip() for segment in segments
@@ -90,7 +97,7 @@ class PersistentWhisper:
         started = time.perf_counter()
         async with self._async_gate:
             try:
-                text = await asyncio.wait_for(asyncio.to_thread(self._infer, pcm), timeout=45)
+                text = await asyncio.wait_for(asyncio.to_thread(self._infer, pcm, partial=partial), timeout=45)
             except asyncio.TimeoutError as exc:
                 self.failures += 1
                 raise WhisperOfflineError('Whisper persistente excedeu 45 segundos.') from exc
