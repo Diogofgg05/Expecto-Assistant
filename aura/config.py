@@ -34,6 +34,7 @@ class Settings:
     voice_whisper_model: str = ''
     voice_piper_binary: str = ''
     voice_piper_model: str = ''
+    voice_piper_inprocess: bool = False  # Opt-in, retains Piper model in RAM.
     embedding_model: str = ''
     searxng_url: str = ''
     research_interval_hours: int = 24
@@ -68,6 +69,7 @@ class Settings:
             voice_whisper_model=os.getenv('AURA_VOICE_WHISPER_MODEL', ''),
             voice_piper_binary=os.getenv('AURA_VOICE_PIPER_BINARY', ''),
             voice_piper_model=os.getenv('AURA_VOICE_PIPER_MODEL', ''),
+            voice_piper_inprocess=os.getenv('AURA_VOICE_PIPER_INPROCESS', 'false').lower() in ('true', '1', 'yes'),
             embedding_model=os.getenv('AURA_EMBEDDING_MODEL', ''),
             searxng_url=os.getenv('AURA_SEARXNG_URL', '').rstrip('/'),
             research_interval_hours=max(6, min(168, int(os.getenv('AURA_RESEARCH_INTERVAL_HOURS', '24')))),
