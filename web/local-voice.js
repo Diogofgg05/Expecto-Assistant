@@ -5,7 +5,6 @@
   const MAX_SECONDS = 15;
   const SILENCE_MS = 950;
   const MIN_VOICE_MS = 250;
-  const MAX_SAMPLES = 48000 * MAX_SECONDS;
   let current = null;
   let cached = null;
 
@@ -19,7 +18,7 @@
   }
 
   function encodeWav(samples, rate) {
-    const count = Math.min(MAX_SAMPLES, samples.length);
+    const count = Math.min(Math.round(rate * MAX_SECONDS), samples.length);
     const ratio = rate / 16000;
     const len = Math.floor(count / ratio);
     const bytes = new ArrayBuffer(44 + len * 2);
