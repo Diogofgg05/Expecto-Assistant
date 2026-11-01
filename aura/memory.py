@@ -6,7 +6,10 @@ for writing/deleting notes. Raw user text never goes to public web search.
 from __future__ import annotations
 import json
 import math
+import asyncio
 import httpx
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from .config import Settings
 from .database import Database
 
@@ -23,20 +26,64 @@ class MemoryEngine:
     def __init__(self, settings: Settings, db: Database):
         self.settings, self.db = settings, db
         self.model = settings.embedding_model.strip()
+        # Query-scoped cache only: no sensitive queries retained after a turn.
+        self._query_cache = ContextVar('expecto_query_embedding_cache', default=None)
+        self._client = None
+
+    def _transport(self):
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=2.0),
+                limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
+                trust_env=False)
+        return self._client
+
+    async def aclose(self):
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+
+    @asynccontextmanager
+    async def query_scope(self):
+        """Single-flight embedding for concurrent note and episode retrieval.
+
+        The context is copied into asyncio.gather tasks. Equal queries share
+        ONE outbound embedding request, with no cross-user persistent cache.
+        """
+        cache = {}
+        token = self._query_cache.set(cache)
+        try:
+            yield
+        finally:
+            self._query_cache.reset(token)
+            for pending in cache.values():
+                if not pending.done():
+                    pending.cancel()
 
     async def _embed(self, text: str) -> list[float] | None:
         if not self.model:
             return None
+        text = text[:2000]
+        cache = self._query_cache.get()
+        if cache is None:
+            return await self._embed_uncached(text)
+        key = (self.model, text)
+        if key not in cache:
+            cache[key] = asyncio.create_task(self._embed_uncached(text))
+        return await asyncio.shield(cache[key])
+
+    async def _embed_uncached(self, text: str) -> list[float] | None:
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=2)) as client:
-                response = await client.post(self.settings.ollama_url + '/api/embed',
-                        json={'model': self.model, 'input': text[:2000]})
-                response.raise_for_status()
-                vectors = response.json().get('embeddings', [])
-                if vectors and isinstance(vectors[0], list):
-                    v = vectors[0]
-                    if 1 <= len(v) <= 8192 and all(isinstance(x,(int,float)) and math.isfinite(x) for x in v):
-                        return [float(x) for x in v]
+            response = await self._transport().post(
+                self.settings.ollama_url + '/api/embed',
+                json={'model': self.model, 'input': text},
+                timeout=httpx.Timeout(8, connect=2),
+            )
+            response.raise_for_status()
+            vectors = response.json().get('embeddings', [])
+            if vectors and isinstance(vectors[0], list):
+                v = vectors[0]
+                if 1 <= len(v) <= 8192 and all(isinstance(x,(int,float)) and math.isfinite(x) for x in v):
+                    return [float(x) for x in v]
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             pass  # Lexical recall remains fully functional.
         return None
@@ -104,12 +151,11 @@ class MemoryEngine:
             return {'indexed':0,'pending':0,'reason':''}
         # One Ollama request for a batch is substantially cheaper than N calls.
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=2.0)) as client:
-                r=await client.post(self.settings.ollama_url+'/api/embed',json={
-                    'model':self.model,'input':[item['content'][:2000] for item in pending]
-                })
-                r.raise_for_status()
-                vectors=r.json().get('embeddings',[])
+            r=await self._transport().post(self.settings.ollama_url+'/api/embed',json={
+                'model':self.model,'input':[item['content'][:2000] for item in pending]
+            })
+            r.raise_for_status()
+            vectors=r.json().get('embeddings',[])
             if not isinstance(vectors,list) or len(vectors)!=len(pending):
                 raise ValueError('Embedding batch incompleto')
             for item,vector in zip(pending,vectors):
