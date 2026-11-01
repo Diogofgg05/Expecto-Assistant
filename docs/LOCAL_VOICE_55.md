@@ -65,3 +65,39 @@ node --check web/local-voice.js
 
 Os testes simulam os binários locais; não provam a qualidade do
 reconhecimento/síntese nem os tempos de latência numa máquina real.
+
+
+## EXPECTO 5.6 — Frases em pipeline e menor custo do microfone
+
+A fila Piper passou a preparar **no máximo uma frase seguinte**, enquanto a
+primeira é reproduzida. Um segmento preparado é reutilizado quando chega a
+sua vez, sem repetir a chamada HTTP de síntese. O cancelamento aborta a
+reprodução atual e o pré-carregamento; respostas interrompidas não são
+reproduzidas de novo.
+
+O separador passa a processar **a primeira frase completa** por vez, em vez
+de agrupar um parágrafo inteiro num só pedido de síntese. Quando não há
+pontuação, divide em segmentos limitados de texto. A voz emitirá eventos
+`expecto:voice` com `engine='piper'`, `preloaded`, `synthesisMs`
+e `gapMs` (diferença local entre terminar uma frase e começar a seguinte).
+Estes eventos são medições locais da interface, não medições end-to-end
+dos motores de IA.
+
+A gravação do microfone usa fragmentos `Float32Array` compactos e limitados
+em vez de adicionar cada amostra a uma lista de números JavaScript. Isto
+reduz alocações e picos de memória, sobretudo em gravações longas e
+dispositivos com elevada frequência de amostragem.
+
+```bash
+node --test tests/test_voice_prefetch_v56.cjs tests/test_voice_browser_v54.cjs
+```
+
+Os testes de prefetch verificam reutilização, ordem, interrupção, fallback
+para síntese Web Speech e libertação dos URLs temporários.
+
+**Limites:** não existe ainda serviço persistente Piper/Whisper em memória;
+continuar a lançar binários por segmento pode limitar o tempo de resposta,
+sobretudo em hardware antigo. A melhoria reduz a pausa percebida quando a
+síntese da próxima frase termina antes de acabar a anterior. Os ganhos reais
+dependem do CPU, modelo e tamanho dos segmentos e não foram medidos no PC
+do utilizador.
