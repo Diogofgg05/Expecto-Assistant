@@ -131,3 +131,15 @@ def pack_context(question: str, passages: list[Passage], budget: int) -> PackedC
         text=text, selected=len(chosen), discarded=len(passages)-len(chosen),
         per_section=dict(Counter({k: len(v) for k, v in sections.items()})),
     )
+
+
+def unranked_context(passages: list[Passage]) -> str:
+    """Unrestricted baseline for A/B testing; no relevance pruning or ordering."""
+    grouped: dict[str, list[str]] = {}
+    for p in passages:
+        if isinstance(p.text, str) and p.text.strip():
+            grouped.setdefault(p.section, []).append(p.text.strip())
+    return "\n\n".join(
+        _LABEL.get(section, section.upper()) + "\n" + "\n".join(values)
+        for section, values in grouped.items()
+    )
