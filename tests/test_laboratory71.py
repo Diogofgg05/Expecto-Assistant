@@ -26,7 +26,7 @@ def test_fresh_cases_reproducible_and_oracles_not_in_prompt():
     first = generate_cases(12)
     assert first == generate_cases(12)
     assert corpus_digest(first) != corpus_digest(generate_cases(13))
-    assert len(first) == 15
+    assert len(first) == 35
     assert all(c.grade(c.expected) for c in first)
     assert all(not c.grade('a plausible but wrong answer') for c in first)
     assert {c.domain for c in first} == {'math', 'programming', 'research'}
@@ -105,7 +105,7 @@ def test_lab_end_to_end_with_fake_ollama_is_not_quality_evidence(tmp_path, monke
         return await run_laboratory(config, seed=222, per_domain=4, repeats=2, warmup=0,
             models=dict.fromkeys(('eco', 'balanced', 'max'), 'test:1'), output=tmp_path / 'report.json')
     report = asyncio.run(run())
-    assert report['complete'] and len(report['rows']) == 72
+    assert report['complete'] and len(report['rows']) == 168
     assert report['recommendation']['recommended'] is None
     assert not config.data_dir.exists()
     assert all(row['calls'][0]['tokens_per_second'] == 2 for row in report['rows'])
