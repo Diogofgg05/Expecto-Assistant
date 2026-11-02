@@ -38,6 +38,8 @@ def test_note_count_does_not_materialize_all_records(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("Não carregar todas as memórias para contar")
     monkeypatch.setattr(engine.db, "memories", forbidden)
+    assert engine.db.memory_count() == 4
+    monkeypatch.undo()
     result = run(engine, "O que te lembras?")
     assert result["ok"]
     assert "4 notas" in result["text"]
