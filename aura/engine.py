@@ -796,10 +796,20 @@ class AuraEngine:
     async def memory_daemon(self, stop: asyncio.Event):
         """Bounded indexing/extraction. Never starts if recording was switched off."""
         while not stop.is_set():
+            policy = self.llm.nanomemory.decide('standard')
+            # Pause optional background extraction when available RAM is
+            # critically low; pending records remain in the database.
+            if policy.low_memory:
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=self.settings.memory_worker_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
+                continue
             if (self.db.capture_enabled(self.settings.episodic_capture) and
                 self.db.get_option('private_mode','false') != 'true'):
                 if self.settings.embedding_model:
-                    await self.memory.index_episode_pending(self.settings.episodic_lookback_months, 12)
+                    batch = 2 if policy.effective == 'eco' else 12
+                    await self.memory.index_episode_pending(self.settings.episodic_lookback_months, batch)
                 enabled = self.db.get_option('auto_extract_memory',
                     'true' if self.settings.auto_extract_memory else 'false')=='true'
                 if enabled:
@@ -817,6 +827,13 @@ class AuraEngine:
     async def research_daemon(self, stop: asyncio.Event):
         """No silent system modification: only opt-in public-topic research."""
         while not stop.is_set():
+            # Deferral, never deletion: opt-in jobs remain due until RAM clears.
+            if self.llm.nanomemory.decide('standard').low_memory:
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=60)
+                except asyncio.TimeoutError:
+                    pass
+                continue
             for job in self.db.due_jobs():
                 if stop.is_set():
                     break
