@@ -1,3 +1,12 @@
+# EXPECTO 7.0.6 — Modular API & SQLCipher CI
+
+API separada em cinco grupos de rotas, com compatibilidade de caminhos,
+respostas e segurança; `aura/app.py` reduziu-se de 521 para cerca de 144
+linhas. Agora existe um teste de instalação real SQLCipher em Windows e
+Linux, além dos testes habituais Ubuntu. A revisão dos PRs antigos e a
+proteção manual de `main` estão descritas em
+[API/CI hardening](docs/API_SECURITY_706.md).
+
 # EXPECTO 7.0.5 — Semantic Memory Streaming
 
 Recuperação de notas e conversas com leitura SQLite em lotes (128) e

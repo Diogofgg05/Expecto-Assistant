@@ -1,15 +1,8 @@
-name: Voice and streaming regression
+name: EXPECTO quality gate
 on:
   pull_request:
-    paths:
-      - 'aura/**'
-      - 'tests/**'
-      - 'scripts/**'
-      - 'web/**'
-      - '.env.example'
-      - 'VERSION'
-      - 'requirements*.txt'
-      - '.github/workflows/voice-streaming-checks.yml'
+  push:
+    branches: [main]
 jobs:
   checks:
     runs-on: ubuntu-latest

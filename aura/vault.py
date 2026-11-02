@@ -117,8 +117,8 @@ def migrate_plaintext(source: Path, destination: Path, passphrase: str) -> Path:
             private_dir.chmod(0o700)
         snapshot = private_dir / 'snapshot.sqlite3'
         staged = private_dir / 'encrypted.sqlite3'
-        with sqlite3.connect(str(source), timeout=15) as plain:
-            with sqlite3.connect(str(snapshot)) as consistent:
+        with closing(sqlite3.connect(str(source), timeout=15)) as plain:
+            with closing(sqlite3.connect(str(snapshot))) as consistent:
                 plain.backup(consistent)
         if os.name == 'posix':
             snapshot.chmod(0o600)
@@ -137,7 +137,7 @@ def migrate_plaintext(source: Path, destination: Path, passphrase: str) -> Path:
             raise VaultLockedError('A migração não produziu uma base cifrada.')
         verify_encrypted_database(staged, passphrase)
         # Check critical data copied, never silently drop six-month history.
-        with sqlite3.connect(str(snapshot)) as original, closing(encrypted_connection(staged, passphrase, create=False)) as cipher:
+        with closing(sqlite3.connect(str(snapshot))) as original, closing(encrypted_connection(staged, passphrase, create=False)) as cipher:
             for table in ('memories', 'conversation_episodes', 'knowledge', 'temporal_facts', 'memory_relations'):
                 present = original.execute('SELECT count(*) FROM sqlite_master WHERE type=\'table\' AND name=?',(table,)).fetchone()[0]
                 if present:
