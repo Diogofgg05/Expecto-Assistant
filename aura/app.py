@@ -454,6 +454,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def quality_summary(limit: int = 25):
         return engine.quality.overview(limit)
 
+    @app.get('/api/memory/status')
+    async def memory_status():
+        """Local read-only memory telemetry. Does not include private prompts."""
+        data = engine.llm.nanomemory.status()
+        data['ollama'] = await engine.llm.loaded_models()
+        return data
+
     @app.get('/api/performance/status')
     async def performance_status():
         # Only anonymous, bounded in-memory aggregates. Never expose the
