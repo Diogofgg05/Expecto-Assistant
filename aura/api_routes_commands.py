@@ -12,7 +12,7 @@ from .api_models import Message
 def register_command_routes(app, engine, db, settings):
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '7.0.5',
+        return {'status': 'ok', 'version': '7.0.6',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
     def finalize_command(payload: Message, result: dict) -> dict:
