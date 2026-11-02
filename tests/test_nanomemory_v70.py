@@ -78,7 +78,7 @@ def test_ollama_chat_receives_memory_budgets(tmp_path, monkeypatch):
     assert asyncio.run(runner()) == "É um programa local."
     assert len(requests) == 1
     assert requests[0]["keep_alive"] == "0m"
-    assert requests[0]["options"]["num_ctx"] == 3072
+    assert requests[0]["options"]["num_ctx"] == 2048  # FAST definition profile
     assert requests[0]["options"]["num_predict"] <= 450
 
 
