@@ -70,8 +70,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.llm.aclose()
         await engine.memory.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='7.0.1', lifespan=lifespan)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.1.1', 'localhost', '[::1]', 'testserver'])
+    app = FastAPI(title='Expecto Ultimate API', version='7.0.2', lifespan=lifespan)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
     async def protect_local_origin(request: Request, call_next):
@@ -114,7 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '7.0.1',
+        return {'status': 'ok', 'version': '7.0.2',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
     def finalize_command(payload: Message, result: dict) -> dict:
@@ -213,7 +213,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             local_peer = peer == 'testclient'
         origin = websocket.headers.get('origin')
         if (not local_peer or (origin and origin not in (
-                'http://127.0.1.1:8000', 'http://localhost:8000',
+                'http://127.0.2.1:8000', 'http://localhost:8000',
                 f'http://{settings.host}:{settings.port}'))):
             await websocket.close(code=1008)
             return

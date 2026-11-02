@@ -1,3 +1,11 @@
+## 7.0.2 — Lightweight Core & lazy optional services
+- Router principal reduzido para cerca de 172 linhas; comandos de memória, interface e verificação separados sem alterar os contratos.
+- Serviços secundários de auditoria, pesquisa e reflexão inicializados sob pedido, evitando objetos desnecessários no arranque.
+- Número de memórias contabilizado via SELECT COUNT(*) sem materializar milhares de notas.
+- Corrigido endereço loopback autorizado para a configuração 127.0.0.1.
+- CI simplificada: gatilhos por diretório e suite Python completa.
+- Os ganhos de latência/RAM reais não foram medidos em hardware de destino.
+
 ## 7.0.1 — API stability & modular engine
 - Eliminada colisão da rota /api/memory/status: recursos passam para /api/resources/status.
 - Verificação de rotas duplicadas HTTP/WebSocket na criação da app.
