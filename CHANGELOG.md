@@ -1,3 +1,10 @@
+## 7.0.5 — Semantic Memory Streaming
+- Leitura de vetores SQLite via fetchmany, sem listas gigantes de registos.
+- Ranking exato top-k e fusão lexical/semântica; mesmos limiares e janela de seis meses.
+- Apenas os candidatos vencedores são materializados em registos completos.
+- Índice SQLite aditivo memory_vectors(model), sem alterar dados ou migrações anteriores.
+- Benchmark sintético de tempo e pico de alocação, testes de relevância e compatibilidade.
+
 ## 7.0.4 — Database responsibilities
 - API pública Database preservada (55 métodos e assinaturas inalteradas).
 - SQL, migrações, FTS e retenção mantidos sem alterações de comportamento.

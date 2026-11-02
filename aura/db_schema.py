@@ -33,6 +33,7 @@ class SchemaMixin:
                 PRIMARY KEY(memory_id, model),
                 FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE
             );
+            CREATE INDEX IF NOT EXISTS ix_memory_vectors_model ON memory_vectors(model);
             CREATE INDEX IF NOT EXISTS ix_memory_status ON memories(status);
         ''')
         try:

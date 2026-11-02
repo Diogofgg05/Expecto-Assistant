@@ -6,6 +6,7 @@ for writing/deleting notes. Raw user text never goes to public web search.
 from __future__ import annotations
 import json
 import math
+import heapq
 import asyncio
 import httpx
 from contextlib import asynccontextmanager
@@ -22,6 +23,36 @@ def cosine(left: list[float], right: list[float], *, left_norm: float | None = N
     denom = math.sqrt(squared_norm * sum(b*b for b in right))
     return total / denom if denom else 0.0
 
+
+
+def top_semantic(query: list[float], candidates, *, threshold: float,
+                 limit: int, always_ids: set[str] | None = None):
+    """Exact cosine top-k over a streaming vector iterator, O(k) extra RAM.
+
+    Every candidate is still checked (no approximate search or loss of recall).
+    Ties are stable in input order. The retained candidates contain only ids,
+    scores and scan positions; text is fetched separately for winners.
+    """
+    heap = []
+    forced = {}
+    protected = always_ids or set()
+    norm = sum(x * x for x in query)
+    for position, (ident, encoded) in enumerate(candidates):
+        try:
+            similarity = cosine(query, json.loads(encoded), left_norm=norm)
+        except (ValueError, TypeError, OverflowError):
+            continue
+        if similarity < threshold or not math.isfinite(similarity):
+            continue
+        if ident in protected:
+            forced[ident] = similarity
+        item = (similarity, -position, ident)
+        if len(heap) < limit:
+            heapq.heappush(heap, item)
+        elif item[:2] > heap[0][:2]:
+            heapq.heapreplace(heap, item)
+    ranked = sorted(heap, reverse=True)
+    return [(ident, score, -negative_position) for score, negative_position, ident in ranked], forced
 
 class MemoryEngine:
     def __init__(self, settings: Settings, db: Database):
@@ -128,20 +159,25 @@ class MemoryEngine:
         for n, entry in enumerate(lexical):
             notes[entry['id']] = entry
             scores[entry['id']] = 1.5 / (1 + n) + 0.06 * int(entry.get('importance', 3))
-        if self.model:
-            stored = self.db.vectors(self.model, 2500)
-            if stored:
-                query_vector = await self._embed(question)
-                if query_vector:
-                    query_norm = sum(x*x for x in query_vector)
-                    for entry in stored:
-                        try:
-                            score = cosine(query_vector, json.loads(entry['vector_json']), left_norm=query_norm)
-                        except (ValueError, TypeError):
-                            continue
-                        if score >= 0.39:
-                            notes[entry['id']] = entry
-                            scores[entry['id']] = scores.get(entry['id'], 0) + score * 2
+        if self.model and self.db.has_memory_vectors(self.model):
+            query_vector = await self._embed(question)
+            if query_vector:
+                selected, matched_lexical = top_semantic(
+                    query_vector, self.db.iter_memory_vectors(self.model, 2500),
+                    threshold=0.39, limit=limit, always_ids=set(notes))
+                for ident, similarity in matched_lexical.items():
+                    scores[ident] += similarity * 2
+                # Reconstitute previous stable ordering on ties.
+                newcomers = sorted(
+                    ((ident, sim, pos) for ident, sim, pos in selected
+                     if ident not in notes),
+                    key=lambda entry: entry[2])
+                hydrated = self.db.memory_rows_by_ids([ident for ident, _, _ in newcomers])
+                loaded = {entry['id']: entry for entry in hydrated}
+                for ident, similarity, _ in newcomers:
+                    if ident in loaded:
+                        notes[ident] = loaded[ident]
+                        scores[ident] = similarity * 2
         return [notes[k] for k in sorted(scores, key=scores.get, reverse=True)[:limit]]
 
     async def index_episode_pending(self, months: int = 6, limit: int = 12) -> dict:
@@ -177,23 +213,18 @@ class MemoryEngine:
         lexical=self.db.search_episodes(question, months, limit=30)
         collected={item['id']:dict(item) for item in lexical}
         scores={item['id']:1.0/(30+rank) for rank,item in enumerate(lexical)}
-        if self.model:
-            # The embed model is shared by indexing and querying; changing models
-            # uses a separate index, avoiding mixed-dimensional comparisons.
-            query_vec=await self._embed(question[:2000])
+        if self.model and self.db.has_episode_vectors(self.model, months):
+            query_vec = await self._embed(question[:2000])
             if query_vec:
-                query_norm = sum(x*x for x in query_vec)
-                semantic=[]
-                for row in self.db.episode_vectors_in_window(self.model,months):
-                    try:
-                        similarity=cosine(query_vec,json.loads(row['vector_json']),left_norm=query_norm)
-                    except (ValueError, TypeError):
-                        continue
-                    if similarity >= 0.56:  # conservative relevance gate
-                        semantic.append((similarity,row))
-                semantic.sort(key=lambda pair:pair[0],reverse=True)
-                for rank,(similarity,item) in enumerate(semantic[:50]):
-                    collected[item['id']]={k:v for k,v in item.items() if k!='vector_json'}
-                    scores[item['id']]=scores.get(item['id'],0)+1.0/(30+rank)
-                    collected[item['id']]['semantic_score']=round(similarity,3)
+                selected, _ = top_semantic(
+                    query_vec, self.db.iter_episode_vectors(self.model, months),
+                    threshold=0.56, limit=50)
+                hydrated = self.db.episode_rows_by_ids(
+                    [ident for ident, _, _ in selected], months)
+                loaded = {entry['id']: entry for entry in hydrated}
+                for rank, (ident, similarity, _) in enumerate(selected):
+                    if ident in loaded:
+                        collected[ident] = loaded[ident]
+                        scores[ident] = scores.get(ident, 0) + 1.0 / (30 + rank)
+                        collected[ident]['semantic_score'] = round(similarity, 3)
         return [collected[key] for key in sorted(scores,key=lambda k:scores[k],reverse=True)[:limit]]
