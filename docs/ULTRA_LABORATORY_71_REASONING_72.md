@@ -24,8 +24,8 @@ python -m scripts.benchmark_ultra71 --model qwen3:8b --eco-model qwen3:4b --max-
 Names are examples, not a hardware recommendation. All must already be installed.
 Reviewer must differ from every candidate; identical installed digests are refused.
 With a reviewer, each profile is evaluated with raw and reviewed answers on the
-same exercises. Default 15 exercises × 2 repetitions × 3 profiles = 90 responses;
-reviewed evaluation adds another 90, each with up to 4 inference calls. It can take
+same exercises. Default 35 exercises × 2 repetitions × 3 profiles = 210 responses;
+reviewed evaluation adds another 210, each with up to 4 inference calls. It can take
 considerable time on old hardware. Interrupting stops inference; completed rows
 are checkpointed atomically after each response. Incomplete reports do not recommend.
 
@@ -133,3 +133,19 @@ Real Ollama was unavailable in the implementation environment: no measured model
 speedup, accuracy improvement or recommended hardware profile is claimed.
 
 Ollama API accounting reference: https://github.com/ollama/ollama/blob/main/docs/api.md
+
+## Extended regression corpus
+
+The generated suite now includes matrix multiplication, uniquely solvable linear
+systems, function input/output contracts, dated superseding sources and instruction
+injection distractors. Function contracts check predicted outputs; they do not yet
+execute candidate implementations in a sandbox.
+
+`failure_regressions` identifies incorrect cases, including proposals incorrectly
+accepted by the reviewer. Reproduce them with the report seed and case ID. The
+report deliberately does not retain model answer text, so manual inspection of
+that text requires a future explicit diagnostic capture mode.
+
+Save an initial report as baseline.json and retain its seed, model digests and
+configuration. Repeat that seed after tuning, then evaluate a new seed to detect
+overfitting. Do not interpret the same-seed comparison alone as general improvement.
