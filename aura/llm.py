@@ -50,14 +50,13 @@ class Ollama:
 
     async def health(self) -> dict:
         try:
-            if True:
-                client = self._transport()
-                resp = await client.get(self.settings.ollama_url + '/api/tags', timeout=2.0)
-                resp.raise_for_status()
-                models = [m.get('name', '') for m in resp.json().get('models', [])]
-                return {'available': True, 'models': models,
-                        'selected': self.settings.ollama_model,
-                        'selected_installed': any(x.split(':')[0] == self.settings.ollama_model.split(':')[0] for x in models)}
+            client = self._transport()
+            resp = await client.get(self.settings.ollama_url + '/api/tags', timeout=2.0)
+            resp.raise_for_status()
+            models = [m.get('name', '') for m in resp.json().get('models', [])]
+            return {'available': True, 'models': models,
+                    'selected': self.settings.ollama_model,
+                    'selected_installed': any(x.split(':')[0] == self.settings.ollama_model.split(':')[0] for x in models)}
         except (httpx.HTTPError, ValueError):
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
