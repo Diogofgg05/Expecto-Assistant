@@ -18,8 +18,8 @@ def cosine(left: list[float], right: list[float], *, left_norm: float | None = N
     if len(left) != len(right) or not left:
         return 0.0
     total = sum(a * b for a, b in zip(left, right))
-    norm = math.sqrt(sum(a*a for a in left)) if left_norm is None else left_norm
-    denom = norm * math.sqrt(sum(b*b for b in right))
+    squared_norm = sum(a*a for a in left) if left_norm is None else left_norm
+    denom = math.sqrt(squared_norm * sum(b*b for b in right))
     return total / denom if denom else 0.0
 
 
@@ -133,7 +133,7 @@ class MemoryEngine:
             if stored:
                 query_vector = await self._embed(question)
                 if query_vector:
-                    query_norm = math.sqrt(sum(x*x for x in query_vector))
+                    query_norm = sum(x*x for x in query_vector)
                     for entry in stored:
                         try:
                             score = cosine(query_vector, json.loads(entry['vector_json']), left_norm=query_norm)
@@ -182,7 +182,7 @@ class MemoryEngine:
             # uses a separate index, avoiding mixed-dimensional comparisons.
             query_vec=await self._embed(question[:2000])
             if query_vec:
-                query_norm = math.sqrt(sum(x*x for x in query_vec))
+                query_norm = sum(x*x for x in query_vec)
                 semantic=[]
                 for row in self.db.episode_vectors_in_window(self.model,months):
                     try:
