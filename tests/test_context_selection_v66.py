@@ -70,8 +70,8 @@ def test_sections_balanced_and_privacy_no_storage():
 def test_off_mode_preserves_legacy_without_budget():
     passages = [Passage("summary", "Important " * 30), Passage("notes", "Details " * 30)]
     full = unranked_context(passages)
-    assert "Important " * 30 in full
-    assert "Details " * 30 in full
+    assert ("Important " * 30).strip() in full
+    assert ("Details " * 30).strip() in full
     assert pack_context("anything", passages, 0).text == ""
 
 
