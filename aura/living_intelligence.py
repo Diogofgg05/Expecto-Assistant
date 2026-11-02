@@ -81,10 +81,25 @@ class ContinuityEngine:
     def suggestions(self, maximum:int=3) -> list[dict]:
         """Local, explainable suggestions. Never performs the suggested action."""
         goals=self.goals(active_only=True)
+        # Only explicit, user-submitted evaluations affect order; do not
+        # infer interests from unrelated chat history or model output.
+        from .reflection import ReflectionEngine
+        scores=ReflectionEngine(self.db).suggestion_scores()
+        goals=sorted(goals,key=lambda goal:scores.get(goal['id'],0),reverse=True)
         out=[]
-        for goal in goals[:max(1,min(maximum,5))]:
-            out.append({'goal_id':goal['id'],'suggestion':f'Queres rever o próximo passo do objetivo: {goal["title"]}?',
-                        'reason':'Objetivo ativo registado por ti', 'action_requires_permission':True})
+        with self.db.connect() as conn:
+            for goal in goals[:max(1,min(maximum,5))]:
+                last=conn.execute('SELECT state FROM expecto_goal_checkins '
+                    'WHERE goal_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1',
+                    (goal['id'],)).fetchone()
+                blocked=bool(last and last['state']=='blocked')
+                suggestion=(f'Queres rever o bloqueio no objetivo: {goal["title"]}?'
+                            if blocked else
+                            f'Queres rever o próximo passo do objetivo: {goal["title"]}?')
+                out.append({'goal_id':goal['id'],'suggestion':suggestion,
+                            'reason':'Bloqueio declarado explicitamente por ti' if blocked
+                                else 'Objetivo ativo registado por ti',
+                            'action_requires_permission':True})
         return out
 
     def context(self) -> str:
