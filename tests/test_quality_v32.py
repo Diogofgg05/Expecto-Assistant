@@ -123,7 +123,7 @@ def test_get_api_and_natural_voice_commands(tmp_path):
         assert client.get('/api/quality/summary').json()['checked']==1
         assert client.get('/api/quality/claims/short').status_code==422
         assert client.get('/api/quality/claims/'+'f'*12).status_code==404
-        assert client.get('/api/health').json()['version'].startswith('3.3')
+        assert client.get('/api/health').json()['version']== __import__('pathlib').Path(__file__).resolve().parents[1].joinpath('VERSION').read_text().strip()
         assert b'sidebar' not in client.get('/').content.lower()
 
 
