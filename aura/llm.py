@@ -62,6 +62,29 @@ class Ollama:
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
 
+    async def loaded_models(self) -> dict:
+        """Read Ollama's loaded-model accounting; VRAM capacity is unknown."""
+        try:
+            response = await self._transport().get(
+                self.settings.ollama_url + '/api/ps', timeout=1.5)
+            response.raise_for_status()
+            rows = response.json().get('models', [])
+            if not isinstance(rows, list):
+                return {'available': False, 'loaded_models': 0, 'loaded_vram_mib': None}
+            count = 0
+            vram = 0
+            for entry in rows[:20]:
+                if not isinstance(entry, dict):
+                    continue
+                count += 1
+                value = entry.get('size_vram', 0)
+                if isinstance(value, int) and value >= 0:
+                    vram += value
+            return {'available': True, 'loaded_models': count,
+                    'loaded_vram_mib': round(vram / 1048576)}
+        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            return {'available': False, 'loaded_models': 0, 'loaded_vram_mib': None}
+
     async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         # Constrain CPU/GPU pressure, particularly on older computers.
         # Cancelling a queued request releases its wait without invoking Ollama.
