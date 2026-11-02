@@ -1,4 +1,6 @@
-# EXPECTO Assistant 6.5.0 — Adaptive Inference & Voice
+# EXPECTO Assistant 6.6.0 — Adaptive Context & Inference
+
+**Nova versão 6.6 em validação:** seleção relevante de memórias, controlo de inferências simultâneas e telemetria do contexto. Detalhes: [Context Performance 6.6](docs/CONTEXT_PERFORMANCE_66.md).
 
 **Versão 6.5 integrada na main.** A versão 6.4 integrou as melhorias anteriormente
 desenvolvidas nos PRs #11–#15: respostas Ollama em streaming, perfis de
