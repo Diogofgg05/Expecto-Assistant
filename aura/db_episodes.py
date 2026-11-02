@@ -42,6 +42,34 @@ class EpisodesMixin:
                 (model,months_before(months),max(1,min(limit,10000)))).fetchall()
         return [dict(row) for row in rows]
 
+    def iter_episode_vectors(self, model: str, months: int = 6,
+                             limit: int = 10000, batch_size: int = 128):
+        """Yield only candidate id/vector pairs, preserving date and ordering."""
+        limit = max(1, min(int(limit), 10000))
+        batch_size = max(1, min(int(batch_size), 256))
+        with self.connect() as db:
+            cursor = db.execute("""SELECT e.id, v.vector_json FROM episode_vectors v
+                JOIN conversation_episodes e ON e.id=v.episode_id
+                WHERE v.model=? AND e.created_at>=?
+                ORDER BY e.created_at DESC LIMIT ?""",
+                (model, months_before(months), limit))
+            while rows := cursor.fetchmany(batch_size):
+                for row in rows:
+                    yield (row['id'], row['vector_json'])
+
+    def episode_rows_by_ids(self, ids: list[str], months: int = 6) -> list[dict]:
+        """Read only selected conversation excerpts; enforce the window again."""
+        ids = list(dict.fromkeys(ids))[:50]
+        if not ids:
+            return []
+        placeholders = ','.join('?' for _ in ids)
+        with self.connect() as db:
+            rows = db.execute(
+                f"SELECT * FROM conversation_episodes WHERE id IN ({placeholders}) "
+                "AND created_at>=?", (*ids, months_before(months))).fetchall()
+        lookup = {row['id']: dict(row) for row in rows}
+        return [lookup[ident] for ident in ids if ident in lookup]
+
     def episode_vector_count(self, model: str, months: int = 6) -> int:
         with self.connect() as db:
             return db.execute('''SELECT count(*) FROM episode_vectors v
