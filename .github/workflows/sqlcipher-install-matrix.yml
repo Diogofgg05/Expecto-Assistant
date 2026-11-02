@@ -1,0 +1,37 @@
+name: SQLCipher Windows and Linux installation
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  sqlcipher-install:
+    name: SQLCipher install (${{ matrix.os }}, Python 3.12)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run the real platform installer
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmd //c install_windows.bat --ci
+          else
+            bash ./install_linux.sh
+          fi
+      - name: Assert installed SQLCipher and run encrypted persistence suite
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PY=.venv/Scripts/python.exe
+          else
+            PY=.venv/bin/python
+          fi
+          "$PY" -m pip install -r requirements-dev.txt 'numpy>=1.26,<3' 'pymupdf>=1.24,<2'
+          "$PY" -c "from aura.vault import sqlcipher_backend; import sqlite3; c=sqlcipher_backend().connect(':memory:'); assert c.execute('PRAGMA cipher_version').fetchone()[0]; c.close()"
+          "$PY" -m pytest -q tests/test_encrypted_v28.py tests/test_database_facade_v704.py tests/test_api_modules_v706.py
