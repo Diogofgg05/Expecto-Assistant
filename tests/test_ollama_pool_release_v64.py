@@ -45,7 +45,7 @@ def test_api_version_and_lifecycle(tmp_path):
     with TestClient(app) as client:
         response=client.get('/api/health')
         assert response.status_code==200
-        assert response.json()['version']=='7.0.3'
+        assert response.json()['version']=='7.0.4'
 
 
 def test_embedding_http_client_closed_after_app_shutdown(tmp_path):
