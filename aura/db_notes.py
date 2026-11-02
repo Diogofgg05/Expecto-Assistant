@@ -123,6 +123,14 @@ class NotesMixin:
                 LIMIT ?''', (model, limit)).fetchall()
         return [dict(x) for x in rows]
 
+    def has_memory_vectors(self, model: str) -> bool:
+        """Avoid an embedding model call when no indexed notes exist."""
+        with self.connect() as db:
+            return bool(db.execute("""SELECT EXISTS(
+                SELECT 1 FROM memory_vectors v JOIN memories m
+                ON m.id=v.memory_id WHERE v.model=? AND m.status='active' LIMIT 1
+            )""", (model,)).fetchone()[0])
+
     def iter_memory_vectors(self, model: str, limit: int = 2500, batch_size: int = 128):
         """Yield just the id and serialized vector in small DB batches.
 
