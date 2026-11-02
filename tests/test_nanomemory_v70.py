@@ -96,7 +96,7 @@ def test_health_and_public_status(tmp_path, monkeypatch):
         config = client.get("/api/config").json()
         assert config["nanomemory"]["policy"]["requested"] == "balanced"
         health = client.get("/api/health").json()
-        assert health["version"] == "7.0.3"
+        assert health["version"] == "7.0.4"
 
 
 def test_loaded_models_vram_from_ollama(tmp_path):
