@@ -97,3 +97,24 @@ def test_health_and_public_status(tmp_path, monkeypatch):
         assert config["nanomemory"]["policy"]["requested"] == "balanced"
         health = client.get("/api/health").json()
         assert health["version"] == "7.0.0"
+
+
+def test_loaded_models_vram_from_ollama(tmp_path):
+    settings=Settings(data_dir=tmp_path,database_encryption_required=False)
+    db=Database(tmp_path/"vram.sqlite3")
+    llm=Ollama(settings,db)
+    def handler(request):
+        if request.url.path=="/api/ps":
+            return httpx.Response(200,json={"models":[
+                {"name":"model-a","size_vram":268435456},
+                {"name":"model-b","size_vram":134217728}
+            ]})
+        return httpx.Response(404)
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            llm._transport=lambda:client
+            return await llm.loaded_models()
+    result=asyncio.run(run())
+    assert result["available"] is True
+    assert result["loaded_models"]==2
+    assert result["loaded_vram_mib"]==384
