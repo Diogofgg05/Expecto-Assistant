@@ -6,12 +6,13 @@ allowed to invoke control commands or grant privileges.
 from __future__ import annotations
 import re
 import asyncio
+from .security import VaultError
 
 
 async def handle_memory_command(engine, original: str, key: str, respond):
     if key in ('o que sabes sobre mim', 'o que te lembras', 'mostra as minhas memorias'):
         mems = engine.db.combined_memory_panel(engine.settings.episodic_lookback_months)
-        return respond(f'Tenho {len(engine.db.memories(999999))} notas e {engine.db.episode_count(engine.settings.episodic_lookback_months)} mensagens na memória dos últimos {engine.settings.episodic_lookback_months} meses.',
+        return respond(f'Tenho {engine.db.memory_count()} notas e {engine.db.episode_count(engine.settings.episodic_lookback_months)} mensagens na memória dos últimos {engine.settings.episodic_lookback_months} meses.',
                      action={'type': 'open', 'panel': 'memory'}, data=mems)
 
     # v2.7: private mode stops automatic capture/index/extraction, preserving old notes.
