@@ -1,4 +1,11 @@
-# EXPECTO Assistant 7.0.1 — NanoMemory + API Stability
+# EXPECTO Assistant 7.0.2 — Lightweight Core + API Stability
+
+**Simplificação 7.0.2:** o motor principal passou de 588 para ~172 linhas,
+comandos especializados isolados, serviços opcionais criados apenas quando
+necessários, contagem SQL de memórias sem carregar notas e CI simplificada.
+[Detalhes da refatorização](docs/LIGHT_CORE_702.md).
+
+## Histórico — 7.0.1 NanoMemory + API Stability
 
 **Atualização 7.0.1:** rotas HTTP/WS validadas, `/api/resources/status`
 separada da memória pessoal, primeiro desdobramento do motor de comandos
