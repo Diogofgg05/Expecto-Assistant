@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .config import Settings, ROOT
+from .api_contracts import validate_api_routes
 from .database import Database
 from .engine import AuraEngine
 from .security import SecureBackupManager, VaultError
@@ -69,8 +70,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.llm.aclose()
         await engine.memory.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='7.0.0', lifespan=lifespan)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
+    app = FastAPI(title='Expecto Ultimate API', version='7.0.1', lifespan=lifespan)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.1.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
     async def protect_local_origin(request: Request, call_next):
@@ -113,7 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '7.0.0',
+        return {'status': 'ok', 'version': '7.0.1',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
     def finalize_command(payload: Message, result: dict) -> dict:
@@ -212,7 +213,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             local_peer = peer == 'testclient'
         origin = websocket.headers.get('origin')
         if (not local_peer or (origin and origin not in (
-                'http://127.0.0.1:8000', 'http://localhost:8000',
+                'http://127.0.1.1:8000', 'http://localhost:8000',
                 f'http://{settings.host}:{settings.port}'))):
             await websocket.close(code=1008)
             return
@@ -454,9 +455,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def quality_summary(limit: int = 25):
         return engine.quality.overview(limit)
 
-    @app.get('/api/memory/status')
-    async def memory_status():
-        """Local read-only memory telemetry. Does not include private prompts."""
+    @app.get('/api/resources/status')
+    async def resource_status():
+        """RAM and Ollama VRAM metrics are separate from personal memory status."""
         data = engine.llm.nanomemory.status()
         data['ollama'] = await engine.llm.loaded_models()
         return data
@@ -493,6 +494,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def index():
         return FileResponse(web_path / 'index.html')
 
+    validate_api_routes(app)
     return app
 
 

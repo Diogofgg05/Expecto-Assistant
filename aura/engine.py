@@ -20,6 +20,9 @@ from .epistemics import EpistemicEngine
 from .quality import KnowledgeQuality
 from .factcheck import FactChecker
 from .security import SecureBackupManager, VaultError
+from .command_reflection import handle_reflection_command
+from .command_research import handle_research_command
+from .engine_services import EngineServicesMixin
 
 
 def normalized(s: str) -> str:
@@ -32,7 +35,7 @@ def reply(text: str, *, action: dict | None = None, data=None, speak: bool = Tru
             'action': action, 'data': data, 'ok': True}
 
 
-class AuraEngine:
+class AuraEngine(EngineServicesMixin):
     def __init__(self, settings: Settings, db: Database):
         self.settings, self.db = settings, db
         self.research = Researcher(db, settings.searxng_url)
@@ -57,92 +60,9 @@ class AuraEngine:
         if not original:
             return reply('Estou a ouvir. Podes falar ou escrever um comando.')
 
-        # v5.1: Reflection is opt-in; feedback notes are never treated as instructions.
-        m=re.match(r'^feedback explicacao (curta|longa|boa)\s*:\s*(.*)$',key)
-        if m:
-            rating={'curta':'too_short','longa':'too_long','boa':'helpful'}[m.group(1)]
-            note=original.split(':',1)[1].strip()
-            item=self.reflection.feedback('explanation',rating,note)
-            return reply('Feedback explícito registado. Só adapto o estilo após a tua aprovação.',
-                         data={'feedback':item})
-        m=re.match(r'^feedback sugestao (util|inutil) ([a-f0-9]{32})(?:\s*:\s*(.*))?$',key)
-        if m:
-            note=original.split(':',1)[1].strip() if ':' in original else ''
-            try:
-                item=self.reflection.feedback('suggestion',
-                    'helpful' if m.group(1)=='util' else 'unhelpful',note,m.group(2))
-            except ValueError as ex:
-                return reply('Não guardei a avaliação: '+str(ex))
-            return reply('Avaliação guardada. Vou ter em conta esta preferência quando pedires sugestões.',
-                         data={'feedback':item})
-        if key in ('analisa feedback', 'reflete sobre o feedback', 'avalia a tua evolucao'):
-            outcome=self.reflection.proposal()
-            if outcome['status']=='pending':
-                return reply('Tenho uma proposta de ajuste ao detalhe das explicações. '
-                             'Precisa da tua aprovação explícita.',data=outcome)
-            if outcome['status']=='already_suitable':
-                return reply('O estilo aprovado já corresponde ao feedback recente.',data=outcome)
-            return reply('Ainda não há feedback consistente suficiente para sugerir uma alteração.',data=outcome)
-        if key in ('estado da reflexao', 'mostra o feedback', 'que aprendeste com o feedback'):
-            return reply('Aqui estão as avaliações explícitas e as adaptações aprovadas. '
-                         'Isto não é treino dos pesos do modelo.',
-                         data={'setting':self.reflection.setting(),
-                               'feedback':self.reflection.feedback_history(),
-                               'proposals':self.reflection.proposals()})
-        m=re.fullmatch(r'(aprova|rejeita) (?:a )?(?:melhoria|adaptacao) ([a-f0-9]{32})',key)
-        if m:
-            try:
-                outcome=self.reflection.decide(m.group(2),'approve' if m.group(1)=='aprova' else 'reject')
-            except ValueError as ex:
-                return reply('Não foi possível rever a proposta: '+str(ex))
-            return reply('Preferência aplicada com aprovação explícita.' if outcome['applied'] else
-                         'Proposta rejeitada; o estilo permanece igual.',data=outcome)
-        if key in ('reverte ultima melhoria','desfaz ultima adaptacao','reverte a ultima adaptacao'):
-            outcome=self.reflection.rollback()
-            return reply('Reverti a última adaptação de comunicação.' if outcome['reverted'] else
-                         'Não existem adaptações ativas para reverter.',data=outcome)
-        m=re.fullmatch(r'apaga feedback ([a-f0-9]{32})',key)
-        if m:
-            removed=self.reflection.delete_feedback(m.group(1))
-            return reply('Feedback eliminado.' if removed else 'Não encontrei essa avaliação.')
-
-        m=re.match(r'^(avancei|bloqueio) no objetivo ([a-f0-9]{32})\s*:\s*(.+)$',key)
-        if m:
-            state='progress' if m.group(1)=='avancei' else 'blocked'
-            try:
-                item=self.reflection.checkin(m.group(2),state,original.split(':',1)[1])
-            except ValueError as ex:
-                return reply('Não guardei o progresso: '+str(ex))
-            return reply('Registo guardado como declaração tua; não executei nenhuma ação.',data={'checkin':item})
-        m=re.fullmatch(r'(?:historico|progresso) do objetivo ([a-f0-9]{32})',key)
-        if m:
-            return reply('Aqui estão os registos explícitos deste objetivo.',
-                         data={'checkins':self.reflection.checkins(m.group(1))})
-        m=re.fullmatch(r'apaga registo de progresso ([a-f0-9]{32})',key)
-        if m:
-            return reply('Registo de progresso apagado.' if self.reflection.delete_checkin(m.group(1)) else
-                         'Não encontrei esse registo.')
-
-        if key.startswith('recorda experiencia: '):
-            item = self.continuity.remember(original.split(':', 1)[1])
-            return reply('Registei esta experiência como declaração tua, não como facto verificado.', data={'experience': item})
-        if key in ('mostra experiencias', 'minhas experiencias'):
-            return reply('Estas são as experiências que pediste para registar.', data={'experiences': self.continuity.experiences()})
-        if key.startswith('apaga experiencia '):
-            ident = key.removeprefix('apaga experiencia ').strip()
-            return reply('Experiência apagada.' if self.continuity.forget(ident) else 'Não encontrei essa experiência.')
-        if key.startswith('novo objetivo: '):
-            item = self.continuity.add_goal(original.split(':', 1)[1])
-            return reply('Objetivo guardado. Não farei ações por iniciativa própria sem autorização.', data={'goal': item})
-        if key in ('meus objetivos', 'mostra objetivos'):
-            return reply('Estes são os objetivos registados.', data={'goals': self.continuity.goals()})
-        if key.startswith('concluir objetivo '):
-            ident = key.removeprefix('concluir objetivo ').strip()
-            return reply('Objetivo concluído.' if self.continuity.goal_status(ident, 'done') else 'Não encontrei esse objetivo.')
-        if key in ('expecto, tens sugestoes', 'tens sugestoes', 'sugere proximo passo', 'sugere um proximo passo', 'o que sugeres'):
-            suggestions = self.continuity.suggestions()
-            return reply('Tenho estas sugestões. Só atuo depois de me dares autorização.' if suggestions else
-                         'Ainda não registei objetivos ativos. Podes dizer: novo objetivo: ...', data={'suggestions': suggestions})
+        result = handle_reflection_command(self, original, key, reply)
+        if result is not None:
+            return result
 
         if key in ('quem es', 'quem es tu', 'qual e a tua identidade', 'identidade da expecto'):
             ident = Identity()
@@ -639,88 +559,9 @@ class AuraEngine:
             return reply('Auditoria: '+labels.get(report['grade'],report['grade'])+'.',
                          action={'type':'open','panel':'research'},data={'epistemic_audit':report})
 
-        # v2.9: source-bound learning, explicit intent and reversible user review.
-        if key in ('ativa aprendizagem avancada', 'ativa o motor de aprendizagem'):
-            self.db.set_option('advanced_learning_enabled','true')
-            return reply('Motor avançado ligado para os temas de investigação que autorizaste. '
-                         'Guardo hipóteses com fontes; não modifico os meus modelos nem o código.')
-        if key in ('desativa aprendizagem avancada', 'desliga o motor de aprendizagem'):
-            self.db.set_option('advanced_learning_enabled','false')
-            return reply('Motor avançado desligado. As fontes e hipóteses existentes continuam guardadas.')
-        if key in ('estado da aprendizagem','como esta a tua aprendizagem','mostra estado da aprendizagem'):
-            stats=self.learning.stats()
-            return reply(f"Registei {stats['runs']} ciclos de aprendizagem e "
-                         f"{stats['evidence_links']} ligações a fontes. As hipóteses não são factos comprovados.",
-                         action={'type':'open','panel':'research'}, data={'topic':'',
-                         'documents':self.db.documents(limit=12),'claims':self.learning.claims(limit=12),
-                         'learning':stats})
-        m = re.match(r'^(?:mostra descobertas sobre|mostra hipoteses sobre|que aprendeste sobre)\s+(.+)$',key)
-        if m:
-            topic=m.group(1)
-            claims=self.learning.claims(topic,20)
-            return reply(f'Encontrei {len(claims)} hipóteses documentadas relacionadas com {topic}. '
-                         'Verifica sempre as fontes.',action={'type':'open','panel':'research'},
-                         data={'topic':topic,'documents':self.db.documents(topic,12),
-                               'claims':claims})
-        m = re.match(r'^(?:aprova|rejeita) (?:a )?(?:hipotese|descoberta)\s+([a-f0-9]{12})$',key)
-        if m:
-            result=self.learning.review(m.group(2), 'approve' if m.group(1)=='aprova' else 'reject')
-            return reply('Registei a tua revisão; isto não equivale a comprovação independente.'
-                         if result else 'Não encontrei essa hipótese.')
-        m = re.match(r'^(?:aprende profundamente sobre|investiga a fundo|faz investigacao aprofundada sobre)\s+(.+)$',key)
-        if m:
-            topic=m.group(1).strip().rstrip('.!?')[:160]
-            outcome=await self.research.learn(topic)
-            result=await self.learning.learn_from(topic,outcome.documents,outcome.warning)
-            return reply(f'Investiguei {topic}: {result.documents} fontes, {result.stored} novas ligações de evidência e '
-                         f'{result.rejected} propostas rejeitadas. Os dados requerem revisão. '
-                         f'{result.warning}',action={'type':'open','panel':'research'},
-                         data={'topic':topic,'documents':outcome.documents,
-                               'claims':self.learning.claims(topic,20), 'warning':result.warning})
-
-        m = re.match(r'^(?:para|desativa|cancela) (?:a )?(?:investigacao|pesquisa) (?:autonoma )?(?:sobre )?(.+)$', key)
-        if m:
-            removed = self.db.disable_job(m.group(1))
-            return reply('Investigação periódica desativada.' if removed else
-                         'Não encontrei uma investigação ativa com esse tema.',
-                         action={'type': 'open', 'panel': 'jobs'}, data=self.db.jobs())
-
-        m = re.match(r'^(?:investiga autonomamente sobre|pesquisa diariamente sobre|aprende autonomamente sobre|pesquisa periodicamente sobre)\s+(.+)$', key)
-        if m:
-            topic = self._topic_from(original)
-            job = self.db.create_job(topic, self.settings.research_interval_hours)
-            # Do the first pass now; subsequent passes occur in scheduler while server runs.
-            outcome = await self.research.learn(topic)
-            self.db.job_result(topic, outcome.warning if not outcome.documents else '')
-            count = len(outcome.documents)
-            result = (f'Ativei pesquisa periódica sobre {topic}. Encontrei {count} fontes ou pré-visualizações. '
-                      f'Os conteúdos não estão verificados independentemente. {outcome.warning}'.strip())
-            return reply(result, action={'type': 'open', 'panel': 'research'},
-                         data={'topic': topic, 'documents': outcome.documents,
-                               'warning': outcome.warning})
-
-        m = re.match(r'^(?:investiga|pesquisa|aprende)(?: sobre)?\s+(.+)$', key)
-        if m:
-            topic = self._topic_from(original)
-            outcome = await self.research.learn(topic)
-            if outcome.documents:
-                result = (f'Investiguei {topic} e guardei {len(outcome.documents)} referências. '
-                          'São fontes e excertos, não conclusões verificadas independentemente.')
-            else:
-                result = f'Não consegui reunir fontes sobre {topic}. {outcome.warning}'
-            return reply(result, action={'type': 'open', 'panel': 'research'},
-                         data={'topic': topic, 'documents': outcome.documents,
-                               'warning': outcome.warning})
-
-        m = re.match(r'^(?:o que aprendeste sobre|resume o que sabes sobre|mostra conhecimento sobre)\s+(.+)$', key)
-        if m:
-            topic = self._topic_from(original)
-            documents = self.db.documents(topic, 15)
-            if not documents:
-                return reply(f'Ainda não tenho fontes guardadas sobre {topic}. Podes pedir-me para investigar.')
-            return reply(f'Tenho {len(documents)} registos relacionados com {topic}. Vou mostrá-los com as fontes.',
-                         action={'type': 'open', 'panel': 'research'},
-                         data={'topic': topic, 'documents': documents, 'warning': ''})
+        result = await handle_research_command(self, original, key, reply)
+        if result is not None:
+            return result
 
         if key in ('ajuda', 'o que podes fazer', 'comandos', 'como funcionas'):
             return reply('Podes pedir: abre a memória, lembra-te de algo, investiga sobre um tema, '
@@ -733,122 +574,14 @@ class AuraEngine:
             result['capture'] = True
             return result
 
-        text = await self.llm.reply(original, history, on_token=on_token)
+        # Do not pass streaming-only arguments to the ordinary request path.
+        # Preserves compatibility with local/third-party LLM adapters exposing
+        # the historical reply(question, history) signature.
+        if on_token is None:
+            text = await self.llm.reply(original, history)
+        else:
+            text = await self.llm.reply(original, history, on_token=on_token)
         result = reply(text, speak=len(text) < 500 or on_token is not None)
         result['capture'] = True  # Save only actual conversations, never CRUD/control commands.
         return result
 
-    @staticmethod
-    def _summary_rows(summaries: list[dict]) -> list[dict]:
-        return [{**x, 'category':'summary', 'updated_at':x['created_at']} for x in summaries]
-
-    @staticmethod
-    def _relational_row(edge: dict) -> dict:
-        label=(f"{RELATION_DISPLAY.get(edge['source_kind'],edge['source_kind'])} "
-               f"{edge['source_name']} {RELATION_DISPLAY.get(edge['relation_type'],edge['relation_type'])} "
-               f"{RELATION_DISPLAY.get(edge['target_kind'],edge['target_kind'])} {edge['target_name']}")
-        return {**edge,'category':'relation','content':label,
-                'created_at':edge['created_at'],'updated_at':edge['created_at']}
-
-    @staticmethod
-    def _topic_from(original: str) -> str:
-        # Capture after the final literal 'sobre', if any; otherwise after first verb.
-        m = re.search(r'\bsobre\s+(.+)$', original, flags=re.I)
-        topic = m.group(1) if m else re.sub(r'^\S+\s+', '', original)
-        return topic.strip().rstrip('.!?')[:160]
-
-    async def panel_data(self, panel: str):
-        if panel == 'memory':
-            return self.db.combined_memory_panel(self.settings.episodic_lookback_months)
-        if panel == 'research' or panel == 'browser':
-            return {'topic': '', 'documents': self.db.documents(limit=25),
-                    'claims':self.learning.claims(limit=18), 'warning': ''}
-        if panel == 'jobs':
-            return self.db.jobs()
-        if panel == 'diagnostics':
-            return {'ollama': await self.llm.health(), 'performance': self.llm.metrics.summary(),
-                    'performance_mode': self.settings.performance_mode,
-                    'memory_count': len(self.db.memories(100)),
-                    'knowledge_count': len(self.db.documents(limit=200)),
-                    'episodes_6months': self.db.episode_count(self.settings.episodic_lookback_months),
-                    'episodic_capture': self.db.capture_enabled(self.settings.episodic_capture),
-                    'memory_months': self.settings.episodic_lookback_months,
-                    'semantic_indexed':self.db.episode_vector_count(self.settings.embedding_model,self.settings.episodic_lookback_months) if self.settings.embedding_model else 0,
-                    'extracted_knowledge':self.db.extracted_count(),
-                    'temporal_facts':self.db.temporal_count(),
-                    'relation_links':self.relations.stats()['links'],
-                    'consolidation': self.consolidation.stats(),
-                    'advanced_learning':self.learning.stats(),
-                    'optimization_lab':self.optimizer.status(),
-                    'epistemic_audits':self.epistemics.latest(10),
-                    'learning_quality':self.quality.overview(12),
-                    'extraction_active':self.db.get_option('auto_extract_memory','true' if self.settings.auto_extract_memory else 'false')=='true',
-                    'private_mode': self.db.get_option('private_mode','false')=='true',
-                    'encrypted_backups_enabled': self.secure_backups.enabled,
-                    'active_database_encrypted': self.db.encrypted,
-                    'research_jobs': len(self.db.jobs(True)), 'research_provider':
-                    'Wikipedia + SearXNG' if self.settings.searxng_url else 'Wikipedia'}
-        if panel == 'projects':
-            return {'message': 'Painel de projetos demonstrativo. A leitura de repositórios locais ainda não está implementada.',
-                    'projects': ['Expecto Ultimate']}
-        return None
-
-    async def memory_daemon(self, stop: asyncio.Event):
-        """Bounded indexing/extraction. Never starts if recording was switched off."""
-        while not stop.is_set():
-            policy = self.llm.nanomemory.decide('standard')
-            # Pause optional background extraction when available RAM is
-            # critically low; pending records remain in the database.
-            if policy.low_memory:
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=self.settings.memory_worker_interval_seconds)
-                except asyncio.TimeoutError:
-                    pass
-                continue
-            if (self.db.capture_enabled(self.settings.episodic_capture) and
-                self.db.get_option('private_mode','false') != 'true'):
-                if self.settings.embedding_model:
-                    batch = 2 if policy.effective == 'eco' else 12
-                    await self.memory.index_episode_pending(self.settings.episodic_lookback_months, batch)
-                enabled = self.db.get_option('auto_extract_memory',
-                    'true' if self.settings.auto_extract_memory else 'false')=='true'
-                if enabled:
-                    await self.extractor.extract_one()
-                auto = self.db.get_option('auto_consolidate_memory',
-                    'true' if self.settings.auto_consolidate_memory else 'false')=='true'
-                if auto and enabled:
-                    await asyncio.to_thread(self.consolidation.if_due,
-                        self.settings.episodic_lookback_months)
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=self.settings.memory_worker_interval_seconds)
-            except asyncio.TimeoutError:
-                pass
-
-    async def research_daemon(self, stop: asyncio.Event):
-        """No silent system modification: only opt-in public-topic research."""
-        while not stop.is_set():
-            # Deferral, never deletion: opt-in jobs remain due until RAM clears.
-            if self.llm.nanomemory.decide('standard').low_memory:
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=60)
-                except asyncio.TimeoutError:
-                    pass
-                continue
-            for job in self.db.due_jobs():
-                if stop.is_set():
-                    break
-                try:
-                    result = await self.research.learn(job['topic'])
-                    if (self.db.get_option('advanced_learning_enabled','false')=='true'
-                        and self.db.get_option('private_mode','false')!='true'):
-                        advanced = await self.learning.learn_from(job['topic'],result.documents,result.warning)
-                        self.db.job_result(job['topic'],advanced.warning)
-                    else:
-                        self.db.job_result(job['topic'], result.warning)
-                except Exception as exc:
-                    # Do not write sensitive exception internals to persistent storage.
-                    self.db.job_result(job['topic'], type(exc).__name__)
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=300)
-            except asyncio.TimeoutError:
-                pass

@@ -109,7 +109,7 @@ def test_api_and_existing_interface_remain_compatible(tmp_path):
     with TestClient(create_app(Settings(data_dir=tmp_path,database_encryption_required=False))) as client:
         assert client.get('/api/learning/status').status_code==200
         assert client.get('/api/learning/claims').json()=={'items':[]}
-        assert client.get('/api/health').json()['version'].startswith('3.3')
+        assert client.get('/api/health').json()['version']== __import__('pathlib').Path(__file__).resolve().parents[1].joinpath('VERSION').read_text().strip()
         assert client.post('/api/command',json={'message':'Abre a memória'}).json()['action']['panel']=='memory'
         assert b'sidebar' not in client.get('/').content.lower()
 

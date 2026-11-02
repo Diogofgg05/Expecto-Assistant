@@ -105,7 +105,7 @@ def test_interface_command_api_no_training_without_explicit_cli(tmp_path):
     assert asyncio.run(engine.command('Reverte estratégia'))['ok']
     assert engine.optimizer.status()['active'] is None
     with TestClient(create_app(settings)) as client:
-        assert client.get('/api/health').json()['version'].startswith('3.3')
+        assert client.get('/api/health').json()['version']== __import__('pathlib').Path(__file__).resolve().parents[1].joinpath('VERSION').read_text().strip()
         obj=client.get('/api/optimizer/status').json()
         assert obj['automatic_training'] is False
         assert not obj['active']

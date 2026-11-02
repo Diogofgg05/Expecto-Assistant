@@ -165,7 +165,7 @@ def test_limited_api_data_and_voice_command(tmp_path):
         assert client.get('/api/factcheck/claims/xyz').status_code==422
         assert client.get('/api/factcheck/claims/'+'f'*12).status_code==404
         assert client.get('/api/factcheck/history').json()=={'items':[]}
-        assert client.get('/api/health').json()['version'].startswith('3.3')
+        assert client.get('/api/health').json()['version']== __import__('pathlib').Path(__file__).resolve().parents[1].joinpath('VERSION').read_text().strip()
 
 
 def test_no_history_after_claim_deletion(tmp_path,monkeypatch):
