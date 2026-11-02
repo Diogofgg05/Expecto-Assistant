@@ -10,6 +10,7 @@ import importlib
 import threading
 import time
 from pathlib import Path
+from .nanomemory import NanoMemoryEngine
 
 SAMPLE_RATE = 16_000
 MAX_SECONDS = 15
@@ -26,6 +27,7 @@ class PersistentWhisper:
     def __init__(self, settings):
         raw = getattr(settings, 'voice_whisper_persistent_model', '').strip()
         self.model_dir = Path(raw).expanduser().resolve() if raw else None
+        self._memory = NanoMemoryEngine(settings)
         self._model_type = None
         self._model = None
         self._lock = threading.Lock()
@@ -71,7 +73,8 @@ class PersistentWhisper:
             if self._model is None:
                 self._model = self._model_type(
                     str(self.model_dir), device='cpu', compute_type='int8',
-                    cpu_threads=4, num_workers=1, local_files_only=True,
+                    cpu_threads=(2 if self._memory.decide('standard').effective == 'eco'
+                                 else 4), num_workers=1, local_files_only=True,
                 )
                 self.loads += 1
             import numpy as np

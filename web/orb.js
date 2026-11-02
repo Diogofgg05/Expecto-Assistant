@@ -5,13 +5,23 @@
   const ctx = canvas.getContext('2d', {alpha:true});
   if (!ctx) return;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const orb = {mode:'idle', pulse:0};
-  window.AuraOrb = {setMode(m){orb.mode=m;orb.pulse=1;}};
+  const orb = {mode:'idle', pulse:0, quality:'balanced', fps:24, dprLimit:1.3, particles:100};
+  window.AuraOrb = {
+    setMode(m){orb.mode=m;orb.pulse=1;},
+    setQuality(policy={}){
+      const visual=policy?.policy||policy;
+      const fps=Number(visual.visual_fps),dpr=Number(visual.visual_dpr),count=Number(visual.visual_particles);
+      if(Number.isFinite(fps)) orb.fps=Math.max(10,Math.min(50,fps));
+      if(Number.isFinite(dpr)) orb.dprLimit=Math.max(0.75,Math.min(2,dpr));
+      if(Number.isFinite(count)) orb.particles=Math.max(16,Math.min(145,Math.floor(count)));
+      resize();
+    },
+  };
   let W=500,H=500,dpr=1,last=0,frame=0;
   let seed=729;
   const rand=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
   const dots=Array.from({length:145},()=>({theta:rand()*Math.PI*2,phi:Math.acos(2*rand()-1),size:rand()*1.7+.4,phase:rand()*6.28}));
-  function resize(){const r=canvas.getBoundingClientRect();dpr=Math.min(window.devicePixelRatio||1,1.6);W=Math.max(100,r.width);H=Math.max(100,r.height);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
+  function resize(){const r=canvas.getBoundingClientRect();dpr=Math.min(window.devicePixelRatio||1,orb.dprLimit);W=Math.max(100,r.width);H=Math.max(100,r.height);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
   new ResizeObserver(resize).observe(canvas);resize();
   const project=(theta,phi,r,rotation,cy)=>{
     let x=Math.sin(phi)*Math.cos(theta+rotation),z=Math.sin(phi)*Math.sin(theta+rotation),y=Math.cos(phi);
@@ -21,7 +31,7 @@
   };
   function circle(x,y,r,stroke,lineWidth=1,alpha=1){ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.strokeStyle=stroke;ctx.globalAlpha=alpha;ctx.lineWidth=lineWidth;ctx.stroke();ctx.globalAlpha=1;}
   function draw(timestamp){
-    if (!document.hidden && (timestamp-last>=(reduced?120:25))){
+    if (!document.hidden && (timestamp-last>=(reduced?120:1000/orb.fps))){
       last=timestamp;frame++;ctx.clearRect(0,0,W,H);
       const t=reduced?0:timestamp/1000;const k=Math.min(W,H)/500;const cx=W/2,cy=H*.465,r=132*k;
       const energy=orb.mode==='listening'?1.5:orb.mode==='thinking'?1.15:1;
@@ -56,7 +66,7 @@
         }
         ctx.strokeStyle='rgba(68,199,245,.19)';ctx.lineWidth=.8;ctx.stroke();
       }
-      for(const d of dots){
+      for(const d of dots.slice(0,orb.particles)){
         const p=project(d.theta,d.phi,r*breath,rot,cy);
         ctx.beginPath();ctx.arc(p.x,p.y,d.size*k*(.8+(p.z+1)*.24)*energy,0,Math.PI*2);
         ctx.fillStyle=`rgba(122,231,255,${.32+(p.z+1)*.22})`;ctx.fill();

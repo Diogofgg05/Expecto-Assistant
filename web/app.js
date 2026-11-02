@@ -364,7 +364,19 @@
   });
   function renderClock(){const d=new Date();clock.textContent=d.toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'});}
   renderClock();setInterval(renderClock,10000);
-  fetch('/api/config').then(r=>r.json()).then(x=>{state.voiceOutput=!!x.voice_output;}).catch(()=>{});
+  async function refreshMemoryQuality(){
+    if(document.hidden)return;
+    try{
+      const response=await fetch('/api/config',{cache:'no-store'});
+      if(!response.ok)return;
+      const x=await response.json();
+      state.voiceOutput=!!x.voice_output;
+      window.AuraOrb?.setQuality?.(x.nanomemory?.policy);
+    }catch(_){/* Keep the current mode when offline. */}
+  }
+  void refreshMemoryQuality();
+  // One lightweight local status check/minute; no continuous browser profiling.
+  setInterval(()=>{if(!document.hidden)void refreshMemoryQuality();},60000);
   fetch('/api/voice/capabilities').then(r=>r.ok?r.json():null)
     .then(x=>{window.ExpectoVoice?.configure?.({localTTS:!!x?.local_tts});}).catch(()=>{});
   window.addEventListener('beforeunload',()=>{state.request?.abort();window.ExpectoVoice?.cancel();window.ExpectoLocalSTT?.cancel();});

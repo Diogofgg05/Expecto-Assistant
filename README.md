@@ -1,18 +1,19 @@
-# EXPECTO Assistant 6.6.0 — Contexto Inteligente & Ultra Performance
+# EXPECTO Assistant 7.0.0 — NanoMemory Engine
 
-**Versão 6.6.0 integrada na `main`** através do [PR #19](https://github.com/Diogofgg05/Expecto-Assistant/pull/19), com [testes automáticos aprovados](https://github.com/Diogofgg05/Expecto-Assistant/actions/runs/41430778967).
+Novo motor de eficiência da RAM e do Ollama: modos AUTO / ECO / BALANCED /
+MAX, keep-alive e contexto adaptativos, renderização holográfica de menor
+consumo, Whisper com menos threads em ECO e relatório de RAM/VRAM utilizado.
+A memória pessoal guardada não é eliminada nem comprimida.
 
-O motor de IA combina agora:
-- **Contexto por relevância:** escolhe passagens relevantes de memórias, episódios e fontes, elimina duplicações e respeita um orçamento global.
-- **Controlo de concorrência Ollama:** evita sobrecarregar RAM/CPU com inferências simultâneas (1 por predefinição; configurável até 4).
-- **Inferência adaptativa:** modelos FAST e DEEP opcionais, fallback para modelo principal, streaming e reutilização de ligações HTTP.
-- **Embeddings otimizados:** pedidos iguais dentro da mesma pergunta são partilhados; a cache temporária não é guardada entre perguntas.
-- **Diagnósticos:** medição de latência e número de passagens selecionadas/descartadas, sem guardar o texto da conversa na telemetria.
-- **Voz local opcional:** Whisper persistente, Piper, AudioWorklet e interrupções (requer configuração de modelos).
+[Manual NanoMemory 7.0](docs/NANOMEMORY_70.md) ·
+[Contexto inteligente 6.6](docs/CONTEXT_PERFORMANCE_66.md) ·
+[Diagnósticos](docs/ULTRA_PERFORMANCE_ENGINE_60.md)
 
-Configuração principal: [Context Performance 6.6](docs/CONTEXT_PERFORMANCE_66.md), [Adaptive Inference 6.5](docs/ADAPTIVE_INFERENCE_65.md), [voz local](docs/LOCAL_VOICE_55.md) e [Whisper/Ollama](docs/WHISPER_OLLAMA_61.md).
+**Nota:** testes automáticos não são benchmarks reais. O ECO pode reduzir
+qualidade em históricos longos e aumentar o TTFT devido ao recarregamento
+do modelo. A quantização de pesos/KV cache é uma configuração opcional
+do servidor Ollama, não uma alteração automática aos modelos.
 
-**Limite da validação:** os testes usam modelos simulados. Ainda não há benchmark comparativo real no computador de destino, nem medições de precisão de voz ou consumo de energia. O OpenJarvis inspirou os princípios de reutilização de ligações; o EXPECTO tem implementação própria, sem cópia de código externo.
 
 ---
 

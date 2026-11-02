@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.llm.aclose()
         await engine.memory.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='6.6.0', lifespan=lifespan)
+    app = FastAPI(title='Expecto Ultimate API', version='7.0.0', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
@@ -113,7 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '6.6.0',
+        return {'status': 'ok', 'version': '7.0.0',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
     def finalize_command(payload: Message, result: dict) -> dict:
@@ -454,18 +454,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def quality_summary(limit: int = 25):
         return engine.quality.overview(limit)
 
+    @app.get('/api/memory/status')
+    async def memory_status():
+        """Local read-only memory telemetry. Does not include private prompts."""
+        data = engine.llm.nanomemory.status()
+        data['ollama'] = await engine.llm.loaded_models()
+        return data
+
     @app.get('/api/performance/status')
     async def performance_status():
         # Only anonymous, bounded in-memory aggregates. Never expose the
         # prompt, retrieved memories, output or private context.
         return {'mode': settings.performance_mode,
-                'metrics': engine.llm.metrics.summary()}
+                'metrics': engine.llm.metrics.summary(),
+                'nanomemory': engine.llm.nanomemory.status()}
 
     @app.get('/api/config')
     async def config():
         return {'voice_output': settings.voice_output,
                 'model': settings.ollama_model,
                 'performance_mode': settings.performance_mode,
+                'nanomemory': engine.llm.nanomemory.status(),
                 'research_interval_hours': settings.research_interval_hours,
                 'advanced_learning': db.get_option('advanced_learning_enabled','false')=='true',
                 'memory_months': settings.episodic_lookback_months,

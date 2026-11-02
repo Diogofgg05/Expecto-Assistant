@@ -5,6 +5,7 @@ import httpx
 import json
 import time
 from .performance import choose_profile, PerformanceMonitor
+from .nanomemory import NanoMemoryEngine
 from .context_selection import Passage, pack_context, unranked_context
 from .config import Settings
 from .database import Database
@@ -29,6 +30,7 @@ class Ollama:
         self.settings, self.db = settings, db
         self.memory = memory or MemoryEngine(settings, db)
         self.metrics = PerformanceMonitor()
+        self.nanomemory = NanoMemoryEngine(settings)
         self._client = None
         self._missing_models = set()
         self._infer_gate = asyncio.Semaphore(settings.ollama_max_concurrent)
@@ -60,6 +62,29 @@ class Ollama:
             return {'available': False, 'models': [], 'selected': self.settings.ollama_model,
                     'selected_installed': False}
 
+    async def loaded_models(self) -> dict:
+        """Read Ollama's loaded-model accounting; VRAM capacity is unknown."""
+        try:
+            response = await self._transport().get(
+                self.settings.ollama_url + '/api/ps', timeout=1.5)
+            response.raise_for_status()
+            rows = response.json().get('models', [])
+            if not isinstance(rows, list):
+                return {'available': False, 'loaded_models': 0, 'loaded_vram_mib': None}
+            count = 0
+            vram = 0
+            for entry in rows[:20]:
+                if not isinstance(entry, dict):
+                    continue
+                count += 1
+                value = entry.get('size_vram', 0)
+                if isinstance(value, int) and value >= 0:
+                    vram += value
+            return {'available': True, 'loaded_models': count,
+                    'loaded_vram_mib': round(vram / 1048576)}
+        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            return {'available': False, 'loaded_models': 0, 'loaded_vram_mib': None}
+
     async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         # Constrain CPU/GPU pressure, particularly on older computers.
         # Cancelling a queued request releases its wait without invoking Ollama.
@@ -69,6 +94,7 @@ class Ollama:
     async def _reply_impl(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         started = time.perf_counter()
         profile = choose_profile(question, history, mode=self.settings.performance_mode)
+        memory_plan = self.nanomemory.decide(profile.name, prediction=profile.max_predict)
         if profile.retrieve_personal:
             # Independent retrievals can share the wait time.
             # Both retrievals often embed the exact same query. Share one
@@ -158,7 +184,11 @@ class Ollama:
             context = unranked_context(snippets)
             selected_count = len(snippets)
         elif profile.retrieve_personal:
-            packed = pack_context(question, snippets, profile.context_limit)
+            # Conservative character estimate. Reserve capacity for the
+            # immutable system prompt, user query and previous turns.
+            memory_budget = min(profile.context_limit,
+                                max(900, memory_plan.num_ctx * 2 - 4000))
+            packed = pack_context(question, snippets, memory_budget)
             context = packed.text
             selected_count, discarded_count = packed.selected, packed.discarded
         else:
@@ -200,9 +230,10 @@ class Ollama:
                 'model': chosen,
                 'messages': messages,
                 'stream': on_token is not None,
-                'keep_alive': self.settings.ollama_keep_alive,
+                'keep_alive': memory_plan.keep_alive,
                 'options': {
-                    'num_predict': profile.max_predict,
+                    'num_predict': memory_plan.max_predict,
+                    'num_ctx': memory_plan.num_ctx,
                     'temperature': 0.35 if profile.name == 'fast' else 0.45,
                 },
             }
