@@ -191,6 +191,11 @@ class Database:
                 :updated_at,:category,:topic,:source,:status,:importance)''', item)
         return item
 
+    def memory_count(self) -> int:
+        """Count active memories without loading thousands of private notes."""
+        with self.connect() as db:
+            return db.execute("SELECT COUNT(*) FROM memories WHERE status='active'").fetchone()[0]
+
     def memories(self, limit=50) -> list[dict]:
         with self.connect() as db:
             rows = db.execute('''SELECT * FROM memories WHERE status='active'
