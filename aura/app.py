@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .config import Settings, ROOT
+from .api_contracts import validate_api_routes
 from .database import Database
 from .engine import AuraEngine
 from .security import SecureBackupManager, VaultError
@@ -493,6 +494,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def index():
         return FileResponse(web_path / 'index.html')
 
+    validate_api_routes(app)
     return app
 
 
