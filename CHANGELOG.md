@@ -1,3 +1,10 @@
+## 6.6.0 — Relevance-Aware Context and Concurrency
+- Seleção determinística de passagens relevantes entre notas, episódios, relações, documentos e contexto temporal, com orçamento global de caracteres e deduplicação.
+- O modo de desempenho off mantém a recuperação anterior sem novo corte de contexto.
+- Fila de inferências Ollama limitada, para reduzir a sobrecarga de CPU e RAM. Definição opcional AURA_OLLAMA_MAX_CONCURRENT (1–4, padrão 1).
+- Diagnósticos de passagens escolhidas e descartadas, sem guardar texto pessoal nas métricas.
+- Validação por testes unitários; velocidade real em hardware ainda pendente.
+
 ## 6.5.0 — Ollama Adaptive Inference 2.0 (measurable optimization)
 - Um único embedding por pergunta partilhado entre recuperação de notas e episódios: teste controlado **2 pedidos antes → 1 depois**; a cache é temporária e por consulta.
 - Cliente HTTP persistente para embeddings, encerrado no shutdown.

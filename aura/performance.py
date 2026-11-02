@@ -93,7 +93,8 @@ class PerformanceMonitor:
         self._rows = deque(maxlen=64)
 
     def record(self, *, profile: str, prep_ms: float, total_ms: float,
-               ttft_ms: float | None, context_chars: int, ok: bool, provider=None, model: str = ''):
+               ttft_ms: float | None, context_chars: int, ok: bool, provider=None, model: str = '',
+               context_selected: int = 0, context_discarded: int = 0):
         provider = provider if isinstance(provider, dict) else {}
         decode_count = provider.get('eval_count')
         decode_ns = provider.get('eval_duration')
@@ -106,6 +107,8 @@ class PerformanceMonitor:
             'total_ms': round(max(0, total_ms), 1),
             'ttft_ms': round(ttft_ms, 1) if ttft_ms is not None else None,
             'context_chars': max(0, context_chars),
+            'context_selected': max(0, int(context_selected)),
+            'context_discarded': max(0, int(context_discarded)),
             'ok': bool(ok),
             'tokens_per_second': tok_per_s,
             'prompt_tokens_evaluated': prompt_count if isinstance(prompt_count, int) and prompt_count >= 0 else None,
@@ -133,6 +136,10 @@ class PerformanceMonitor:
                 'tokens_per_second': distribution('tokens_per_second'),
             },
             'mean_context_chars': round(statistics.mean(row['context_chars'] for row in rows))
+                if rows else None,
+            'mean_context_selected': round(statistics.mean(row['context_selected'] for row in rows), 1)
+                if rows else None,
+            'mean_context_discarded': round(statistics.mean(row['context_discarded'] for row in rows), 1)
                 if rows else None,
             'stores_user_content': False,
         }

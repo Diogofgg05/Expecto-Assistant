@@ -33,6 +33,7 @@ class Settings:
     ollama_fast_model: str = ''
     ollama_deep_model: str = ''
     performance_mode: str = 'balanced'
+    ollama_max_concurrent: int = 1
     voice_whisper_binary: str = ''
     voice_whisper_model: str = ''
     voice_whisper_persistent_model: str = ''
@@ -71,6 +72,7 @@ class Settings:
                                else '10m')(os.getenv('AURA_OLLAMA_KEEP_ALIVE', '10m').strip()),
             ollama_fast_model=os.getenv('AURA_OLLAMA_FAST_MODEL', '').strip(),
             ollama_deep_model=os.getenv('AURA_OLLAMA_DEEP_MODEL', '').strip(),
+            ollama_max_concurrent=max(1, min(4, int(os.getenv('AURA_OLLAMA_MAX_CONCURRENT', '1')))) if os.getenv('AURA_OLLAMA_MAX_CONCURRENT', '1').strip().isdigit() else 1,
             performance_mode=(lambda value: value if value in ('balanced', 'conservative', 'off')
                               else 'balanced')(os.getenv('AURA_PERFORMANCE_MODE', 'balanced').strip().lower()),
             voice_whisper_binary=os.getenv('AURA_VOICE_WHISPER_BINARY', ''),

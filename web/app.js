@@ -142,6 +142,9 @@
       stat(body,'Tempo até primeiro token',fmtTime(perfTimes.first_token));
       stat(body,'Tempo total de resposta',fmtTime(perfTimes.total));
       stat(body,'Preparação de contexto',fmtTime(perfTimes.preparation));
+      stat(body,'Passagens de contexto selecionadas (média)',perf.mean_context_selected??'—');
+      stat(body,'Passagens descartadas (média)',perf.mean_context_discarded??'—');
+      stat(body,'Caracteres de contexto (média)',perf.mean_context_chars??'—');
       stat(body,'Pedidos de inferência falhados',perf.failed_requests??0);
       stat(body,'Modelo configurado',llm.selected||'—');stat(body,'Modelo instalado',llm.selected_installed?'SIM':'NÃO / DESCONHECIDO');
       stat(body,'Modelos detetados',llm.models?.join(', ')||'—');stat(body,'Memórias locais',data?.memory_count??'—');
