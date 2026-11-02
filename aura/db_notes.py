@@ -8,7 +8,7 @@ from pathlib import Path
 from contextlib import closing
 from uuid import uuid4
 from .db_shared import now, months_before
-from .vault import cipher_operational_errors
+from .vault import cipher_operational_errors, encrypted_connection
 
 
 class NotesMixin:
