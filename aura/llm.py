@@ -161,7 +161,11 @@ class Ollama:
             context = unranked_context(snippets)
             selected_count = len(snippets)
         elif profile.retrieve_personal:
-            packed = pack_context(question, snippets, profile.context_limit)
+            # Conservative character estimate. Reserve capacity for the
+            # immutable system prompt, user query and previous turns.
+            memory_budget = min(profile.context_limit,
+                                max(900, memory_plan.num_ctx * 2 - 4000))
+            packed = pack_context(question, snippets, memory_budget)
             context = packed.text
             selected_count, discarded_count = packed.selected, packed.discarded
         else:
