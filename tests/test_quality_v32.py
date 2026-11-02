@@ -148,8 +148,11 @@ def test_no_untrusted_claims_in_learned_context(tmp_path,monkeypatch):
     assert answer=='Uma resposta cautelosa.'
     assert calls
     system=calls[0]['messages'][0]['content']
-    learning_chunk=system.split('HIPÓTESES DE APRENDIZAGEM (NÃO COMPROVADAS; manter a qualificação):\n',1)[1].split('Fontes recolhidas',1)[0]
-    assert '125 + 75 = 201' not in learning_chunk
+    # Relevance packing may omit an entire untrusted/withheld hypothesis
+    # section. If present, it must never promote a known falsified claim.
+    if 'HIPÓTESES DE APRENDIZAGEM' in system:
+        hypotheses=system.split('HIPÓTESES DE APRENDIZAGEM',1)[1].split('\\n\\n',1)[0]
+        assert '125 + 75 = 201' not in hypotheses
 
 
 def test_quality_summary_has_read_only_semantics_and_bounded_limits(tmp_path):
