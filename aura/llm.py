@@ -31,6 +31,7 @@ class Ollama:
         self.metrics = PerformanceMonitor()
         self._client = None
         self._missing_models = set()
+        self._infer_gate = asyncio.Semaphore(settings.ollama_max_concurrent)
 
     def _transport(self):
         if self._client is None or self._client.is_closed:
@@ -60,6 +61,12 @@ class Ollama:
                     'selected_installed': False}
 
     async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
+        # Constrain CPU/GPU pressure, particularly on older computers.
+        # Cancelling a queued request releases its wait without invoking Ollama.
+        async with self._infer_gate:
+            return await self._reply_impl(question, history, on_token=on_token)
+
+    async def _reply_impl(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         started = time.perf_counter()
         profile = choose_profile(question, history, mode=self.settings.performance_mode)
         if profile.retrieve_personal:
