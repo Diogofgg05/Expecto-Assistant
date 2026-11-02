@@ -1,3 +1,10 @@
+## 7.0.6 — Modular API and SQLCipher native CI
+- Separação de rotas em comandos, voz, memória, conhecimento e sistema.
+- Preservadas as mesmas rotas, mensagens, middleware local e ciclo de vida.
+- Testes de integração de contratos HTTP/WS e ficheiros estáticos.
+- CI nativa Windows/Linux com instalação do produto e SQLCipher real.
+- Auditoria de nove PRs antigos; branch protection requer alteração nas settings GitHub.
+
 ## 7.0.5 — Semantic Memory Streaming
 - Leitura de vetores SQLite via fetchmany, sem listas gigantes de registos.
 - Ranking exato top-k e fusão lexical/semântica; mesmos limiares e janela de seis meses.
