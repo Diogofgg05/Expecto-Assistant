@@ -76,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.llm.aclose()
         await engine.memory.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='7.0.5', lifespan=lifespan)
+    app = FastAPI(title='Expecto Ultimate API', version='7.0.6', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
