@@ -1,3 +1,14 @@
+# EXPECTO 7.0.5 — Semantic Memory Streaming
+
+Recuperação de notas e conversas com leitura SQLite em lotes (128) e
+seleção top-k exata, sem carregar milhares de registos e vetores de
+uma só vez. Preserva FTS5, scores, contexto temporal, SQLCipher e todos
+os dados; apenas consulta o texto completo dos candidatos vencedores.
+
+[Documentação e benchmark comparativo](docs/SEMANTIC_MEMORY_705.md).
+**A melhoria esperada é sobretudo o pico de alocações Python durante
+a pesquisa; velocidade e RAM global têm de ser medidas.**
+
 # EXPECTO 7.0.4 — Database Modularization
 
 O ficheiro `aura/database.py` passou de 848 para cerca de 103 linhas. Os 55 métodos
