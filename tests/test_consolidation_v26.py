@@ -135,7 +135,7 @@ def test_api_voice_settings_and_no_new_navigation(tmp_path,monkeypatch):
         assert send('Mostra contradições')['ok']
         assert send('Desativa consolidação automática')['ok']
         assert not client.get('/api/config').json()['auto_consolidate']
-        assert client.get('/api/health').json()['version'].startswith('3.3')
+        assert client.get('/api/health').json()['version']== __import__('pathlib').Path(__file__).resolve().parents[1].joinpath('VERSION').read_text().strip()
     web=(ROOT/'web/app.js').read_text()
     assert 'openPanel' in web and 'closeAll' in web
 
