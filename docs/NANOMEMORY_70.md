@@ -61,3 +61,15 @@ to take effect.
 
 Automated tests run with fake Ollama hardware and do not prove faster
 latency, lower battery use or memory savings on your actual computer.
+
+## Background work under pressure
+
+When critically low on available RAM, NanoMemory defers the memory
+indexing/extraction worker and optional research daemon until a later
+poll. The tasks and user memory records are NOT deleted; research jobs
+remain due in the database. Under ordinary ECO mode, semantic episode
+indexing processes at most 2 items per iteration rather than 12.
+
+This is an intentional availability/latency tradeoff: scheduled research
+may be delayed while free RAM remains critically low. This does not
+change the user's explicit privacy or research opt-in settings.
