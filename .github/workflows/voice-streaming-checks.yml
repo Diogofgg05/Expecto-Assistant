@@ -35,5 +35,7 @@ jobs:
           node --check web/capture-worklet.js
       - name: All Python regression tests
         run: python -m pytest -q tests
+      - name: Semantic memory synthetic benchmark
+        run: python -m scripts.benchmark_semantic_memory --rows 500 --dims 32 --runs 2
       - name: Browser speech regression
         run: node --test tests/test_voice_browser_v54.cjs tests/test_voice_prefetch_v56.cjs tests/test_audio_pipeline_v62.cjs
