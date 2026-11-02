@@ -1,3 +1,13 @@
+# EXPECTO 7.0.4 — Database Modularization
+
+O ficheiro `aura/database.py` passou de 848 para cerca de 103 linhas. Os 55 métodos
+originais estão preservados em sete módulos SQL especializados, sem alterações de
+assinaturas nem do código SQL. A interface `from aura.database import Database`
+mantém-se. [Consultar detalhes](docs/DATABASE_REFACTOR_704.md).
+
+**Validação:** requer aprovação de CI antes do merge. Uma refatorização de código
+não prova por si só redução de RAM ou maior velocidade.
+
 # EXPECTO Assistant 7.0.3 — Lightweight Runtime
 
 **Novo:** Whisper e Piper opcionais só são inicializados na primeira
