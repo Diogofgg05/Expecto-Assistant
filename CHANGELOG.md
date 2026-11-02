@@ -1,3 +1,10 @@
+## 7.0.4 — Database responsibilities
+- API pública Database preservada (55 métodos e assinaturas inalteradas).
+- SQL, migrações, FTS e retenção mantidos sem alterações de comportamento.
+- Módulos especializados: esquema, notas, episódios, temporal, extrações, opções e investigação.
+- Testes de migração legacy, idempotência de esquema, exportação e backup.
+- Nenhuma eliminação de dados ou nova migração de esquema.
+
 ## 7.0.3 — Lightweight runtime
 - Lazily instantiate optional voice engines on first voice request.
 - Reuse squared query norm when ranking memory and episode embedding vectors.
