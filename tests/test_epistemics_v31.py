@@ -103,7 +103,7 @@ def test_migration_and_http_are_read_only(tmp_path):
         assert client.get('/api/epistemics/audits').json()['items']==[]
         assert client.get('/api/epistemics/claims/'+'bad-id').status_code==422
         assert client.get('/api/epistemics/claims/'+'a'*12).status_code==404
-        assert client.get('/api/health').json()['version'].startswith('3.3')
+        assert client.get('/api/health').json()['version']== __import__('pathlib').Path(__file__).resolve().parents[1].joinpath('VERSION').read_text().strip()
         assert b'sidebar' not in client.get('/').content.lower()
 
 
