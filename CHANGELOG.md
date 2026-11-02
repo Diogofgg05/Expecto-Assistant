@@ -1,3 +1,10 @@
+## 7.0.1 — API stability & modular engine
+- Eliminada colisão da rota /api/memory/status: recursos passam para /api/resources/status.
+- Verificação de rotas duplicadas HTTP/WebSocket na criação da app.
+- Separados comandos de reflexão, investigação e serviços de fundo do motor principal.
+- Testes completos e contratos de API na CI, com controlos de origem e payload.
+- Nenhuma migração de dados ou alteração automática de modelos.
+
 ## 7.0.0 — NanoMemory Engine
 - Política AUTO/ECO/BALANCED/MAX com leitura best-effort de RAM livre.
 - Contexto Ollama num_ctx, num_predict e keep_alive regulados por perfil.
