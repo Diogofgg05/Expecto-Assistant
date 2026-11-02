@@ -1,25 +1,12 @@
 """Constrained intent router; model output NEVER authorizes a privileged action."""
 from __future__ import annotations
-import asyncio
 import re
 import unicodedata
 from .database import Database
-from .research import Researcher
 from .llm import Ollama
-from .identity import Identity, IdentitySettings, MODES
-from .living_intelligence import ContinuityEngine
-from .reflection import ReflectionEngine
+from .identity import Identity, IdentitySettings
 from .memory import MemoryEngine
-from .cognition import KnowledgeExtractor
 from .config import Settings
-from .relations import RelationMemory, DISPLAY as RELATION_DISPLAY
-from .consolidation import ConsolidationEngine
-from .learning import LearningEngine
-from .optimizer import OptimizationLab
-from .epistemics import EpistemicEngine
-from .quality import KnowledgeQuality
-from .factcheck import FactChecker
-from .security import SecureBackupManager, VaultError
 from .command_reflection import handle_reflection_command
 from .command_research import handle_research_command
 from .command_interface import handle_interface_command
@@ -41,19 +28,7 @@ def reply(text: str, *, action: dict | None = None, data=None, speak: bool = Tru
 class AuraEngine(EngineServicesMixin):
     def __init__(self, settings: Settings, db: Database):
         self.settings, self.db = settings, db
-        self.research = Researcher(db, settings.searxng_url)
         self.memory = MemoryEngine(settings, db)
-        self.extractor = KnowledgeExtractor(settings, db)
-        self.relations = RelationMemory(db)
-        self.consolidation = ConsolidationEngine(db)
-        self.learning = LearningEngine(settings, db)
-        self.optimizer = OptimizationLab(settings, db)
-        self.epistemics = EpistemicEngine(db)
-        self.quality = KnowledgeQuality(db)
-        self.factcheck = FactChecker(db)
-        self.secure_backups = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
-        self.continuity = ContinuityEngine(db)
-        self.reflection = ReflectionEngine(db)
         self.llm = Ollama(settings, db, self.memory)
 
     async def command(self, original: str, history: list[dict] | None = None, *, on_token=None) -> dict:
