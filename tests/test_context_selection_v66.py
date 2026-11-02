@@ -80,3 +80,40 @@ def test_tiny_budgets_terminate_without_overflow():
     for limit in range(0, 100):
         packed = pack_context("Texto", passages, limit)
         assert len(packed.text) <= limit
+
+
+
+def test_inference_gate_limits_cpu_pressure(tmp_path):
+    import asyncio
+    from aura.llm import Ollama
+    from aura.config import Settings
+    from aura.database import Database
+    async def run():
+        settings = Settings(data_dir=tmp_path, database_encryption_required=False,
+                            ollama_max_concurrent=1)
+        db = Database(tmp_path / "gate.sqlite3")
+        llm = Ollama(settings, db)
+        active = 0
+        maximum = 0
+        async def fake_impl(question, history=None, *, on_token=None):
+            nonlocal active, maximum
+            active += 1
+            maximum = max(maximum, active)
+            await asyncio.sleep(.005)
+            active -= 1
+            return "ok"
+        llm._reply_impl = fake_impl
+        responses = await asyncio.gather(*(llm.reply("Define compilador") for _ in range(5)))
+        assert responses == ["ok"] * 5
+        assert maximum == 1
+    asyncio.run(run())
+
+
+def test_ollama_concurrency_setting(monkeypatch):
+    from aura.config import Settings
+    monkeypatch.setenv("AURA_OLLAMA_MAX_CONCURRENT", "3")
+    assert Settings.from_env().ollama_max_concurrent == 3
+    monkeypatch.setenv("AURA_OLLAMA_MAX_CONCURRENT", "999")
+    assert Settings.from_env().ollama_max_concurrent == 4
+    monkeypatch.setenv("AURA_OLLAMA_MAX_CONCURRENT", "invalid")
+    assert Settings.from_env().ollama_max_concurrent == 1
