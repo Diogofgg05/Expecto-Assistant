@@ -1,28 +1,18 @@
-# EXPECTO Assistant 6.6.0 — Adaptive Context & Inference
+# EXPECTO Assistant 6.6.0 — Contexto Inteligente & Ultra Performance
 
-**Versão 6.6 integrada na main:** seleção relevante de memórias, controlo de inferências simultâneas e telemetria do contexto. Detalhes: [Context Performance 6.6](docs/CONTEXT_PERFORMANCE_66.md).
+**Versão 6.6.0 integrada na `main`** através do [PR #19](https://github.com/Diogofgg05/Expecto-Assistant/pull/19), com [testes automáticos aprovados](https://github.com/Diogofgg05/Expecto-Assistant/actions/runs/41430778967).
 
-**Histórico — versão 6.5.** A versão 6.4 integrou as melhorias anteriormente
-desenvolvidas nos PRs #11–#15: respostas Ollama em streaming, perfis de
-processamento, contexto limitado, Whisper persistente opcional, Piper e
-captura de áudio melhorada. As ligações HTTP ao Ollama são reutilizadas
-entre pedidos e encerradas durante o shutdown da aplicação.
+O motor de IA combina agora:
+- **Contexto por relevância:** escolhe passagens relevantes de memórias, episódios e fontes, elimina duplicações e respeita um orçamento global.
+- **Controlo de concorrência Ollama:** evita sobrecarregar RAM/CPU com inferências simultâneas (1 por predefinição; configurável até 4).
+- **Inferência adaptativa:** modelos FAST e DEEP opcionais, fallback para modelo principal, streaming e reutilização de ligações HTTP.
+- **Embeddings otimizados:** pedidos iguais dentro da mesma pergunta são partilhados; a cache temporária não é guardada entre perguntas.
+- **Diagnósticos:** medição de latência e número de passagens selecionadas/descartadas, sem guardar o texto da conversa na telemetria.
+- **Voz local opcional:** Whisper persistente, Piper, AudioWorklet e interrupções (requer configuração de modelos).
 
-**Validação:** testes automatizados do [PR #16](https://github.com/Diogofgg05/Expecto-Assistant/pull/16)
-aprovados. Whisper/Piper reais, consumo de recursos e ganhos de velocidade
-continuam **por medir no computador de destino**. As funcionalidades de voz
-local exigem instalação e configuração opcionais dos modelos.
+Configuração principal: [Context Performance 6.6](docs/CONTEXT_PERFORMANCE_66.md), [Adaptive Inference 6.5](docs/ADAPTIVE_INFERENCE_65.md), [voz local](docs/LOCAL_VOICE_55.md) e [Whisper/Ollama](docs/WHISPER_OLLAMA_61.md).
 
-Configuração: [voz local](docs/LOCAL_VOICE_55.md),
-[Whisper e Ollama](docs/WHISPER_OLLAMA_61.md),
-[desempenho](docs/ULTRA_PERFORMANCE_ENGINE_60.md).
-A atualização 6.5 acrescenta reutilização de embeddings dentro da mesma pergunta
-(com teste 2 → 1 pedidos duplicados), seleção opcional de modelos FAST/DEEP
-e um [benchmark A/B local](docs/ADAPTIVE_INFERENCE_65.md).
-Ainda não existem tempos reais recolhidos no computador do utilizador.
-
-O OpenJarvis inspirou a reutilização de ligações HTTP; não foi copiado código
-do projeto externo.
+**Limite da validação:** os testes usam modelos simulados. Ainda não há benchmark comparativo real no computador de destino, nem medições de precisão de voz ou consumo de energia. O OpenJarvis inspirou os princípios de reutilização de ligações; o EXPECTO tem implementação própria, sem cópia de código externo.
 
 ---
 
