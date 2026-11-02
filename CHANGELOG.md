@@ -1,3 +1,12 @@
+## 7.0.0 — NanoMemory Engine
+- Política AUTO/ECO/BALANCED/MAX com leitura best-effort de RAM livre.
+- Contexto Ollama num_ctx, num_predict e keep_alive regulados por perfil.
+- Diagnóstico /api/memory/status: RAM livre e VRAM de modelos carregados (API Ollama /api/ps).
+- Canvas do holograma reduz FPS, DPR e partículas sob pressão de RAM.
+- Whisper persistente usa dois CPU threads em ECO durante carregamento.
+- Mantém memória pessoal intacta, sem matar processos, sem quantizar pesos automaticamente.
+- Testes isolados e documentação. Benchmark em hardware real pendente.
+
 ## 6.6.0 — Relevance-Aware Context and Concurrency
 - Seleção determinística de passagens relevantes entre notas, episódios, relações, documentos e contexto temporal, com orçamento global de caracteres e deduplicação.
 - O modo de desempenho off mantém a recuperação anterior sem novo corte de contexto.
