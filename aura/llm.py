@@ -5,6 +5,7 @@ import httpx
 import json
 import time
 from .performance import choose_profile, PerformanceMonitor
+from .nanomemory import NanoMemoryEngine
 from .context_selection import Passage, pack_context, unranked_context
 from .config import Settings
 from .database import Database
@@ -29,6 +30,7 @@ class Ollama:
         self.settings, self.db = settings, db
         self.memory = memory or MemoryEngine(settings, db)
         self.metrics = PerformanceMonitor()
+        self.nanomemory = NanoMemoryEngine(settings)
         self._client = None
         self._missing_models = set()
         self._infer_gate = asyncio.Semaphore(settings.ollama_max_concurrent)
@@ -69,6 +71,7 @@ class Ollama:
     async def _reply_impl(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
         started = time.perf_counter()
         profile = choose_profile(question, history, mode=self.settings.performance_mode)
+        memory_plan = self.nanomemory.decide(profile.name, prediction=profile.max_predict)
         if profile.retrieve_personal:
             # Independent retrievals can share the wait time.
             # Both retrievals often embed the exact same query. Share one
@@ -200,9 +203,10 @@ class Ollama:
                 'model': chosen,
                 'messages': messages,
                 'stream': on_token is not None,
-                'keep_alive': self.settings.ollama_keep_alive,
+                'keep_alive': memory_plan.keep_alive,
                 'options': {
-                    'num_predict': profile.max_predict,
+                    'num_predict': memory_plan.max_predict,
+                    'num_ctx': memory_plan.num_ctx,
                     'temperature': 0.35 if profile.name == 'fast' else 0.45,
                 },
             }
