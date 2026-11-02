@@ -19,6 +19,7 @@ def register_system_routes(app, engine, db, settings, secure):
         # prompt, retrieved memories, output or private context.
         return {'mode': settings.performance_mode,
                 'metrics': engine.llm.metrics.summary(),
+                'responses': engine.llm.metrics.recent(),
                 'nanomemory': engine.llm.nanomemory.status()}
 
     @app.get('/api/config')

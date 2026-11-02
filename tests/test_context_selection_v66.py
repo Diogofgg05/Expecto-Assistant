@@ -95,7 +95,7 @@ def test_inference_gate_limits_cpu_pressure(tmp_path):
         llm = Ollama(settings, db)
         active = 0
         maximum = 0
-        async def fake_impl(question, history=None, *, on_token=None):
+        async def fake_impl(question, history=None, *, on_token=None, **telemetry):
             nonlocal active, maximum
             active += 1
             maximum = max(maximum, active)
