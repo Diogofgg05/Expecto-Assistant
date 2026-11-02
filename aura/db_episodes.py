@@ -42,6 +42,13 @@ class EpisodesMixin:
                 (model,months_before(months),max(1,min(limit,10000)))).fetchall()
         return [dict(row) for row in rows]
 
+    def has_episode_vectors(self, model: str, months: int = 6) -> bool:
+        with self.connect() as db:
+            return bool(db.execute("""SELECT EXISTS(
+                SELECT 1 FROM episode_vectors v JOIN conversation_episodes e
+                ON e.id=v.episode_id WHERE v.model=? AND e.created_at>=? LIMIT 1
+            )""", (model, months_before(months))).fetchone()[0])
+
     def iter_episode_vectors(self, model: str, months: int = 6,
                              limit: int = 10000, batch_size: int = 128):
         """Yield only candidate id/vector pairs, preserving date and ordering."""
