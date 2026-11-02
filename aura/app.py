@@ -1,21 +1,15 @@
 """Single-origin HTTP API + static holographic interface. Localhost by default."""
 from __future__ import annotations
 import asyncio
-import json
 import logging
-import time
 from contextlib import asynccontextmanager, suppress
 from functools import lru_cache
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from urllib.parse import urlparse
 from ipaddress import ip_address
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-from .config import Settings, ROOT
+from .config import Settings
 from .api_contracts import validate_api_routes
 from .api_routes_commands import register_command_routes
 from .api_routes_voice import register_voice_routes
@@ -24,9 +18,9 @@ from .api_routes_knowledge import register_knowledge_routes
 from .api_routes_system import register_system_routes
 from .database import Database
 from .engine import AuraEngine
-from .security import SecureBackupManager, VaultError
-from .local_voice import LocalVoice, VoiceInvalid, VoiceUnavailable, MAX_WAV_BYTES
-from .persistent_whisper import PersistentWhisper, WhisperOfflineError, MIN_PCM_BYTES, MAX_PCM_BYTES
+from .security import SecureBackupManager
+from .local_voice import LocalVoice
+from .persistent_whisper import PersistentWhisper
 
 
 from .api_models import Message, VoiceText
