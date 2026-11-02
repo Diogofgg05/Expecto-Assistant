@@ -1,4 +1,10 @@
-# EXPECTO Assistant 7.0.0 — NanoMemory Engine
+# EXPECTO Assistant 7.0.1 — NanoMemory + API Stability
+
+**Atualização 7.0.1:** rotas HTTP/WS validadas, `/api/resources/status`
+separada da memória pessoal, primeiro desdobramento do motor de comandos
+e testes completos na CI. [Detalhes](docs/API_STABILITY_701.md).
+
+## Histórico — 7.0.0 NanoMemory Engine
 
 Novo motor de eficiência da RAM e do Ollama: modos AUTO / ECO / BALANCED /
 MAX, keep-alive e contexto adaptativos, renderização holográfica de menor
