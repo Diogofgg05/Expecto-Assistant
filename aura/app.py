@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager, suppress
+from functools import lru_cache
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, Response
@@ -38,8 +39,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     db = Database(settings.data_dir / 'aura.sqlite3', passphrase=settings.database_passphrase,
                   require_encryption=settings.database_encryption_required)
     engine = AuraEngine(settings, db)
-    local_voice = LocalVoice(settings)
-    persistent_whisper = PersistentWhisper(settings)
+    # Lazily instantiate optional speech services. Text-only startup avoids
+    # importing CTranslate2/Piper when a user never enables voice.
+    @lru_cache(maxsize=1)
+    def local_voice():
+        return LocalVoice(settings)
+
+    @lru_cache(maxsize=1)
+    def persistent_whisper():
+        return PersistentWhisper(settings)
     secure = SecureBackupManager(db, settings.data_dir / 'secure_backups', settings.backup_passphrase)
 
     @asynccontextmanager
@@ -70,7 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.llm.aclose()
         await engine.memory.aclose()
 
-    app = FastAPI(title='Expecto Ultimate API', version='7.0.2', lifespan=lifespan)
+    app = FastAPI(title='Expecto Ultimate API', version='7.0.3', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
@@ -114,7 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/api/health')
     async def health():
-        return {'status': 'ok', 'version': '7.0.2',
+        return {'status': 'ok', 'version': '7.0.3',
                 'ollama': await engine.llm.health(), 'research_jobs': len(db.jobs(True))}
 
     def finalize_command(payload: Message, result: dict) -> dict:
@@ -195,7 +203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get('/api/voice/capabilities')
     async def voice_capabilities():
         """Feature detection without exposing private machine paths."""
-        return {**local_voice.capabilities(), **persistent_whisper.capabilities()}
+        return {**local_voice().capabilities(), **persistent_whisper().capabilities()}
 
     @app.websocket('/api/voice/continuous')
     async def continuous_voice(websocket: WebSocket):
@@ -213,11 +221,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             local_peer = peer == 'testclient'
         origin = websocket.headers.get('origin')
         if (not local_peer or (origin and origin not in (
-                'http://127.0.2.1:8000', 'http://localhost:8000',
+                'http://127.0.3.1:8000', 'http://localhost:8000',
                 f'http://{settings.host}:{settings.port}'))):
             await websocket.close(code=1008)
             return
-        if not persistent_whisper.available:
+        if not persistent_whisper().available:
             await websocket.close(code=1013)
             return
         await websocket.accept()
@@ -227,7 +235,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         generation = 0
         async def partial_result(audio: bytes, sequence: int):
             try:
-                result = await persistent_whisper.transcribe_pcm(audio, partial=True)
+                result = await persistent_whisper().transcribe_pcm(audio, partial=True)
                 if sequence == generation:
                     await websocket.send_json({'type': 'partial', **result})
             except (WhisperOfflineError, WebSocketDisconnect, RuntimeError):
@@ -262,7 +270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             partial_task.cancel()
                         if len(pcm) >= MIN_PCM_BYTES:
                             try:
-                                result = await persistent_whisper.transcribe_pcm(bytes(pcm))
+                                result = await persistent_whisper().transcribe_pcm(bytes(pcm))
                                 await websocket.send_json({'type':'final', **result})
                             except WhisperOfflineError:
                                 await websocket.send_json({'type':'error','reason':'transcription_failed'})
@@ -285,7 +293,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post('/api/voice/transcribe')
     async def voice_transcribe(request: Request):
         """Accept only bounded WAV PCM input. Never upload to a third party."""
-        if not local_voice.stt_available:
+        if not local_voice().stt_available:
             raise HTTPException(503, 'Whisper local não está configurado.')
         if request.headers.get('content-type', '').split(';', 1)[0].lower() != 'audio/wav':
             raise HTTPException(415, 'Envia áudio WAV PCM16 mono 16 kHz.')
@@ -297,7 +305,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(413, 'Gravação demasiado grande.')
             pieces.append(piece)
         try:
-            return await local_voice.transcribe(b''.join(pieces))
+            return await local_voice().transcribe(b''.join(pieces))
         except VoiceInvalid as exc:
             raise HTTPException(422, str(exc)) from exc
         except VoiceUnavailable as exc:
@@ -306,10 +314,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post('/api/voice/synthesize')
     async def voice_synthesize(payload: VoiceText):
         """Optional local PCM voice output for short text segments."""
-        if not local_voice.tts_available:
+        if not local_voice().tts_available:
             raise HTTPException(503, 'Piper local não está configurado.')
         try:
-            wav = await local_voice.synthesize(payload.text)
+            wav = await local_voice().synthesize(payload.text)
         except VoiceInvalid as exc:
             raise HTTPException(422, str(exc)) from exc
         except VoiceUnavailable as exc:

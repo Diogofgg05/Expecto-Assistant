@@ -1,3 +1,10 @@
+# EXPECTO Assistant 7.0.3 — Lightweight Runtime
+
+**Novo:** Whisper e Piper opcionais só são inicializados na primeira
+utilização de voz, mantendo a interface de texto livre dessas dependências
+pesadas no arranque. A pesquisa semântica reutiliza o cálculo da norma da
+pergunta sem alterar os resultados matemáticos. [Detalhes](docs/LIGHT_RUNTIME_703.md).
+
 # EXPECTO Assistant 7.0.2 — Lightweight Core + API Stability
 
 **Simplificação 7.0.2:** o motor principal passou de 588 para ~172 linhas,

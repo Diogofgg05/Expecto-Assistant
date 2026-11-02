@@ -1,3 +1,10 @@
+## 7.0.3 — Lightweight runtime
+- Lazily instantiate optional voice engines on first voice request.
+- Reuse squared query norm when ranking memory and episode embedding vectors.
+- Remove unreachable no-op wrapper in Ollama health.
+- Regression tests verify lazy creation, scoring equivalence and API compatibility.
+- No proven RAM/CPU speedup until benchmarks on target hardware.
+
 ## 7.0.2 — Lightweight Core & lazy optional services
 - Router principal reduzido para cerca de 172 linhas; comandos de memória, interface e verificação separados sem alterar os contratos.
 - Serviços secundários de auditoria, pesquisa e reflexão inicializados sob pedido, evitando objetos desnecessários no arranque.
