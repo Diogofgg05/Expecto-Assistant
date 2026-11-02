@@ -71,7 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.memory.aclose()
 
     app = FastAPI(title='Expecto Ultimate API', version='7.0.1', lifespan=lifespan)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.1.1', 'localhost', '[::1]', 'testserver'])
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', '[::1]', 'testserver'])
 
     @app.middleware('http')
     async def protect_local_origin(request: Request, call_next):
