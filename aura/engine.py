@@ -574,7 +574,13 @@ class AuraEngine(EngineServicesMixin):
             result['capture'] = True
             return result
 
-        text = await self.llm.reply(original, history, on_token=on_token)
+        # Do not pass streaming-only arguments to the ordinary request path.
+        # Preserves compatibility with local/third-party LLM adapters exposing
+        # the historical reply(question, history) signature.
+        if on_token is None:
+            text = await self.llm.reply(original, history)
+        else:
+            text = await self.llm.reply(original, history, on_token=on_token)
         result = reply(text, speak=len(text) < 500 or on_token is not None)
         result['capture'] = True  # Save only actual conversations, never CRUD/control commands.
         return result
