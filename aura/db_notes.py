@@ -123,6 +123,35 @@ class NotesMixin:
                 LIMIT ?''', (model, limit)).fetchall()
         return [dict(x) for x in rows]
 
+    def iter_memory_vectors(self, model: str, limit: int = 2500, batch_size: int = 128):
+        """Yield just the id and serialized vector in small DB batches.
+
+        Keeps the same default SQL traversal order as vectors(), but does not
+        materialize the note text and thousands of vectors at once.
+        """
+        limit = max(1, min(int(limit), 2500))
+        batch_size = max(1, min(int(batch_size), 256))
+        with self.connect() as db:
+            cursor = db.execute("""SELECT m.id, v.vector_json FROM memory_vectors v
+                JOIN memories m ON v.memory_id=m.id
+                WHERE v.model=? AND m.status='active' LIMIT ?""", (model, limit))
+            while rows := cursor.fetchmany(batch_size):
+                for row in rows:
+                    yield (row['id'], row['vector_json'])
+
+    def memory_rows_by_ids(self, ids: list[str]) -> list[dict]:
+        """Materialize only the chosen note records in one bounded query."""
+        ids = list(dict.fromkeys(ids))[:30]
+        if not ids:
+            return []
+        placeholders = ','.join('?' for _ in ids)
+        with self.connect() as db:
+            rows = db.execute(
+                f"SELECT * FROM memories WHERE status='active' AND id IN ({placeholders})",
+                ids).fetchall()
+        lookup = {row['id']: dict(row) for row in rows}
+        return [lookup[ident] for ident in ids if ident in lookup]
+
     def pending_embeddings(self, model: str, limit: int = 40) -> list[dict]:
         with self.connect() as db:
             rows = db.execute('''SELECT m.* FROM memories m
