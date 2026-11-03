@@ -149,3 +149,22 @@ that text requires a future explicit diagnostic capture mode.
 Save an initial report as baseline.json and retain its seed, model digests and
 configuration. Repeat that seed after tuning, then evaluate a new seed to detect
 overfitting. Do not interpret the same-seed comparison alone as general improvement.
+
+## Evidence validation and uncertainty
+
+Saved comparisons now validate actual case/profile/repetition coverage rather than
+trusting the complete flag. Incorrect types, Boolean/nonfinite latency values,
+duplicate trials and inconsistent case counts are rejected. Legacy reports missing
+case_count or the corpus fingerprint must be regenerated.
+
+For at least 12 cases with two repetitions each, comparison reports include a
+deterministic 2,000-resample percentile bootstrap interval over per-case median
+latency changes. Repetitions of the same case are clustered rather than counted
+as independent questions. `speed_evidence` reports consistent_gain_over_5pct only
+when the interval upper bound is below -5% and paired correctness/validity gates
+pass. Otherwise the evidence is inconclusive or insufficient. The original raw
+observed-improvement field remains descriptive, not a significance claim.
+
+This interval is exploratory: public templates can correlate across cases, hardware
+load can vary and repeated tuning can overfit. It does not certify model quality or
+prove a causal speedup. Confirm results on a fresh seed and comparable hardware.
