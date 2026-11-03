@@ -3,9 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from .database import Database
-from .llm import Ollama
 from .identity import Identity, IdentitySettings
-from .memory import MemoryEngine
 from .config import Settings
 from .command_reflection import handle_reflection_command
 from .command_research import handle_research_command
@@ -13,6 +11,7 @@ from .command_interface import handle_interface_command
 from .command_memory import handle_memory_command
 from .command_evidence import handle_evidence_command
 from .engine_services import EngineServicesMixin
+from .core.services import CoreServices
 
 
 def normalized(s: str) -> str:
@@ -26,10 +25,15 @@ def reply(text: str, *, action: dict | None = None, data=None, speak: bool = Tru
 
 
 class AuraEngine(EngineServicesMixin):
-    def __init__(self, settings: Settings, db: Database):
+    def __init__(self, settings: Settings, db: Database, *, services: CoreServices | None = None):
         self.settings, self.db = settings, db
-        self.memory = MemoryEngine(settings, db)
-        self.llm = Ollama(settings, db, self.memory)
+        if services is not None and (services.settings is not settings or services.db is not db):
+            raise ValueError("As dependências têm de usar as mesmas definições e base de dados.")
+        self.services = services if services is not None else CoreServices(settings, db)
+        # Keep legacy public attributes. Both are built by the same scoped
+        # container; the model always receives the exact memory instance.
+        self.memory = self.services.get("memory")
+        self.llm = self.services.get("llm")
 
     async def command(self, original: str, history: list[dict] | None = None, *, on_token=None) -> dict:
         original = original.strip()

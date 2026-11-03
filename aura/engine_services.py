@@ -14,63 +14,51 @@ from .relations import DISPLAY as RELATION_DISPLAY
 class EngineServicesMixin:
     @cached_property
     def research(self):
-        from .research import Researcher
-        return Researcher(self.db, self.settings.searxng_url)
+        return self.services.get("research")
 
     @cached_property
     def extractor(self):
-        from .cognition import KnowledgeExtractor
-        return KnowledgeExtractor(self.settings, self.db)
+        return self.services.get("extractor")
 
     @cached_property
     def relations(self):
-        from .relations import RelationMemory
-        return RelationMemory(self.db)
+        return self.services.get("relations")
 
     @cached_property
     def consolidation(self):
-        from .consolidation import ConsolidationEngine
-        return ConsolidationEngine(self.db)
+        return self.services.get("consolidation")
 
     @cached_property
     def learning(self):
-        from .learning import LearningEngine
-        return LearningEngine(self.settings, self.db)
+        return self.services.get("learning")
 
     @cached_property
     def optimizer(self):
-        from .optimizer import OptimizationLab
-        return OptimizationLab(self.settings, self.db)
+        return self.services.get("optimizer")
 
     @cached_property
     def epistemics(self):
-        from .epistemics import EpistemicEngine
-        return EpistemicEngine(self.db)
+        return self.services.get("epistemics")
 
     @cached_property
     def quality(self):
-        from .quality import KnowledgeQuality
-        return KnowledgeQuality(self.db)
+        return self.services.get("quality")
 
     @cached_property
     def factcheck(self):
-        from .factcheck import FactChecker
-        return FactChecker(self.db)
+        return self.services.get("factcheck")
 
     @cached_property
     def continuity(self):
-        from .living_intelligence import ContinuityEngine
-        return ContinuityEngine(self.db)
+        return self.services.get("continuity")
 
     @cached_property
     def reflection(self):
-        from .reflection import ReflectionEngine
-        return ReflectionEngine(self.db)
+        return self.services.get("reflection")
 
     @cached_property
     def secure_backups(self):
-        from .security import SecureBackupManager
-        return SecureBackupManager(self.db, self.settings.data_dir / 'secure_backups', self.settings.backup_passphrase)
+        return self.services.get("secure_backups")
 
     @staticmethod
     def _summary_rows(summaries: list[dict]) -> list[dict]:
