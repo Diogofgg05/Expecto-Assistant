@@ -163,7 +163,7 @@ class LocalReasoningModel:
                             chunks.append(piece)
                         if event.get('done'):
                             usage = event
-                if not usage.get('done') or usage.get('done_reason') == 'length' or not chunks:
+                if usage.get('done') is not True or usage.get('done_reason') == 'length' or not chunks:
                     raise ValueError('Incomplete model response')
                 done = True
                 return ''.join(chunks)
