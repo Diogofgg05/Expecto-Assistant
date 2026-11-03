@@ -4,6 +4,8 @@ import statistics
 
 
 def compare_reports(baseline, candidate):
+    from .laboratory_validation import validate_report
+    old, new = validate_report(baseline), validate_report(candidate)
     if baseline.get('environment') != candidate.get('environment'):
         raise ValueError('Environment differs or is missing in one report')
     for key in ('corpus_sha256', 'repeats', 'warmup'):
@@ -13,17 +15,6 @@ def compare_reports(baseline, candidate):
             raise ValueError(f'Incompatible or missing {key}')
     if not baseline.get('complete') or not candidate.get('complete'):
         raise ValueError('Both reports must be complete')
-    def index(report):
-        result = {}
-        for row in report['rows']:
-            key = (row['case_id'], row['repeat'], row['profile'], row['pipeline'])
-            if key in result:
-                raise ValueError('Duplicate trial')
-            if not isinstance(row.get('total_ms'), (int, float)) or not math.isfinite(row['total_ms']) or row['total_ms'] <= 0:
-                raise ValueError('Invalid latency')
-            result[key] = row
-        return result
-    old, new = index(baseline), index(candidate)
     if not old or old.keys() != new.keys():
         raise ValueError('Trial coverage differs')
     groups = {}
@@ -35,9 +26,26 @@ def compare_reports(baseline, candidate):
         failed = sum(not b['ok'] or b['effective_profile'] != profile for _, b in pairs)
         before = statistics.median(a['total_ms'] for a, _ in pairs)
         after = statistics.median(b['total_ms'] for _, b in pairs)
+        by_case = {}
+        for a, b in pairs:
+            by_case.setdefault(a['case_id'], []).append((b['total_ms']/a['total_ms']-1)*100)
+        changes = [statistics.median(v) for v in by_case.values()]
+        interval = None
+        if len(changes) >= 12 and baseline['repeats'] >= 2:
+            import random
+            rng = random.Random(71)
+            draws = sorted(statistics.median(rng.choices(changes, k=len(changes))) for _ in range(2000))
+            interval = {'low': draws[49], 'high': draws[1949], 'confidence': 0.95,
+                        'method': 'percentile bootstrap over case medians; repetitions clustered by case'}
+        quality_ok = not losses and not failed and all(a['ok'] and a['effective_profile'] == profile for a, _ in pairs)
         results.append({'profile': profile, 'pipeline': pipeline,
             'baseline_median_ms': before, 'candidate_median_ms': after,
             'latency_change_pct': (after/before-1)*100,
+            'paired_median_change_pct': statistics.median(changes),
+            'paired_change_interval': interval,
+            'speed_evidence': ('quality_regression_or_invalid_run' if not quality_ok else
+                'insufficient_samples' if interval is None else
+                'consistent_gain_over_5pct' if interval['high'] < -5 else 'inconclusive'),
             'paired_accuracy_losses': losses, 'failed_or_overridden': failed,
             'baseline_accuracy': sum(a['correct'] for a, _ in pairs)/len(pairs),
             'candidate_accuracy': sum(b['correct'] for _, b in pairs)/len(pairs),
