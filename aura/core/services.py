@@ -123,6 +123,20 @@ class CoreServices:
         self._instances: dict[str, Any] = {}
         self._constructing: set[str] = set()
 
+    def public_manifest(self) -> dict:
+        """Anonymous, side-effect-free inventory; never reads credentials/data.
+
+        Factory names describe configured capabilities; only instantiated
+        names indicate actual resources used by this engine.
+        """
+        return {
+            "scope": "engine",
+            "available": sorted(self._factories),
+            "initialized": sorted(self._instances),
+            "lazy": True,
+            "runtime_overrides_enabled": False,
+        }
+
     @property
     def initialized(self) -> frozenset[str]:
         """Service names only; never exposes stored memories or credentials."""
