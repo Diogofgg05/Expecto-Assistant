@@ -1,3 +1,12 @@
+## Unreleased — 7.1 Ultra Performance Laboratory / 7.2 Reasoning Engine
+
+- Paired ECO/BALANCED/MAX experiments with seeded math, code-tracing and source-conflict holdouts.
+- Per-call preparation, queue, TTFT, provider TPS and optional sampled RSS/VRAM telemetry.
+- Quality-gated recommendation with paired non-regression checks; no automatic profile changes.
+- Exact arithmetic command, optional specialist models and separate-model bounded review/revision.
+- Anonymous bounded telemetry, interrupted-stream rejection and atomic benchmark checkpoints.
+- No real-model improvement claimed: actual Ollama evaluation remains hardware-dependent.
+
 ## 7.0.6 — Modular API and SQLCipher native CI
 - Separação de rotas em comandos, voz, memória, conhecimento e sistema.
 - Preservadas as mesmas rotas, mensagens, middleware local e ciclo de vida.

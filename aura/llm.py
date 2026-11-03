@@ -72,25 +72,37 @@ class Ollama:
                 return {'available': False, 'loaded_models': 0, 'loaded_vram_mib': None}
             count = 0
             vram = 0
+            vram_known = True
             for entry in rows[:20]:
                 if not isinstance(entry, dict):
                     continue
                 count += 1
-                value = entry.get('size_vram', 0)
+                value = entry.get('size_vram')
                 if isinstance(value, int) and value >= 0:
                     vram += value
+                else:
+                    vram_known = False
             return {'available': True, 'loaded_models': count,
-                    'loaded_vram_mib': round(vram / 1048576)}
+                    'loaded_vram_mib': vram / 1048576 if vram_known else None}
         except (httpx.HTTPError, ValueError, TypeError, KeyError):
             return {'available': False, 'loaded_models': 0, 'loaded_vram_mib': None}
 
-    async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
+    async def reply(self, question: str, history: list[dict] | None = None, *, on_token=None, input_limit=2000) -> str:
         # Constrain CPU/GPU pressure, particularly on older computers.
         # Cancelling a queued request releases its wait without invoking Ollama.
+        if not 1 <= input_limit <= 24000 or len(question) > input_limit and input_limit != 2000:
+            raise ValueError('Structured prompt exceeds input budget')
+        from .response_resources import ResponseResources
+        started = time.perf_counter()
         async with self._infer_gate:
-            return await self._reply_impl(question, history, on_token=on_token)
+            queue_ms = (time.perf_counter() - started) * 1000
+            if self.settings.response_resource_sampling:
+                async with ResponseResources(self.loaded_models) as resources:
+                    return await self._reply_impl(question, history, on_token=on_token,
+                                                  resources=resources, queue_ms=queue_ms, input_limit=input_limit)
+            return await self._reply_impl(question, history, on_token=on_token, queue_ms=queue_ms, input_limit=input_limit)
 
-    async def _reply_impl(self, question: str, history: list[dict] | None = None, *, on_token=None) -> str:
+    async def _reply_impl(self, question: str, history: list[dict] | None = None, *, on_token=None, resources=None, queue_ms=0, input_limit=2000) -> str:
         started = time.perf_counter()
         profile = choose_profile(question, history, mode=self.settings.performance_mode)
         memory_plan = self.nanomemory.decide(profile.name, prediction=profile.max_predict)
@@ -195,7 +207,7 @@ class Ollama:
         continuity_context = reflection_context = ''
         # The system and identity prompts are never truncated or reranked.
         context_chars = len(context) + len(continuity_context) + len(reflection_context)
-        prep_ms = (time.perf_counter() - started) * 1000
+        prep_ms = 0.0
         first_token_at = None
         completed = False
         messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
@@ -214,7 +226,7 @@ class Ollama:
                 break
             selected.append({'role': x['role'], 'content': content[:available]})
         messages.extend(reversed(selected))
-        messages.append({'role': 'user', 'content': question[:2000]})
+        messages.append({'role': 'user', 'content': question[:input_limit]})
         chunks = []
         usage = {}
         preferred = (self.settings.ollama_fast_model if profile.name == 'fast'
@@ -236,6 +248,7 @@ class Ollama:
                     'temperature': 0.35 if profile.name == 'fast' else 0.45,
                 },
             }
+            prep_ms = (time.perf_counter() - started) * 1000
             # Disable hidden thinking only for self-contained FAST definitions.
             # Other profiles leave the model's default reasoning behavior intact.
             if profile.name == 'fast':
@@ -256,8 +269,10 @@ class Ollama:
                                 f'Executa: ollama pull {base_model}.')
                     resp.raise_for_status()
                     usage = resp.json()
+                    if usage.get('done_reason') == 'length':
+                        raise ValueError('Ollama response truncated by token limit')
                     answer = usage.get('message', {}).get('content', '').strip()
-                    completed = bool(answer)
+                    completed = bool(answer) and usage.get('done_reason') != 'length'
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
             else:
                 for model in candidates:
@@ -287,7 +302,9 @@ class Ollama:
                                     first_token_at = time.perf_counter()
                                 await on_token(piece)
                     break
-                completed = bool(chunks)
+                if usage.get('done') is not True or usage.get('done_reason') == 'length':
+                    raise ValueError('Ollama stream ended without completion')
+                completed = bool(chunks) and usage.get('done_reason') != 'length'
                 return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
         except httpx.ConnectError:
             if chunks and on_token is not None:
@@ -306,7 +323,9 @@ class Ollama:
             return 'Ocorreu um erro na comunicação com o modelo local. Verifica os diagnósticos.'
         finally:
             self.metrics.record(
-                profile=profile.name, prep_ms=prep_ms,
+                profile=profile.name, prep_ms=prep_ms, queue_ms=queue_ms,
+                memory_mode=memory_plan.effective,
+                resources=resources.public() if resources else None,
                 total_ms=(time.perf_counter() - started) * 1000,
                 ttft_ms=((first_token_at - started) * 1000 if first_token_at is not None else None),
                 context_chars=context_chars, ok=completed,
