@@ -3,6 +3,8 @@ from __future__ import annotations
 from ..identity import Identity, IdentitySettings
 
 def compose_messages(settings, question, history, profile, context, system_prompt):
+    # Legacy placeholders intentionally remain empty; preserve exact prompt spacing.
+    continuity_context = reflection_context = ''
     messages = [{'role': 'system', 'content': system_prompt + '\n\n' + Identity().prompt(IdentitySettings(settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
     # Bounded rolling history: newest turns remain, old turns are trimmed
     # first. No private prompt/response caching; the system prompt is untouched.
