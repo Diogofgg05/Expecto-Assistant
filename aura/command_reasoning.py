@@ -1,4 +1,5 @@
 """Explicit checked-answer commands; no private drafts streamed to the user."""
+from .ollama_protocol import installed_models
 import re
 
 
@@ -24,7 +25,7 @@ async def handle_reasoning_command(engine, original, reply):
             async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
                 tags = await client.get(url + '/api/tags')
                 tags.raise_for_status()
-                installed = {item['name']: item.get('digest') for item in tags.json().get('models', [])}
+                installed = installed_models(tags.json())
                 if model not in installed or (reviewer and reviewer not in installed):
                     return reply('Configura nomes exatos de modelos já instalados, incluindo a tag.')
                 if reviewer and installed.get(model) and installed[model] == installed.get(reviewer):
