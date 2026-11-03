@@ -1,5 +1,6 @@
 """Paired local tests: quality gates precede speed ranking; never auto-apply."""
 from __future__ import annotations
+from .ollama_protocol import installed_models
 import asyncio
 from dataclasses import replace
 import json
@@ -73,7 +74,7 @@ async def run_laboratory(settings, *, seed, per_domain=5, repeats=2, warmup=1,
     async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
         tags = await client.get(url + '/api/tags')
         tags.raise_for_status()
-        installed = {m['name']: m.get('digest') for m in tags.json().get('models', [])}
+        installed = installed_models(tags.json())
         for model in set(models.values()) | ({review_model} if review_model else set()):
             if model not in installed:
                 raise ValueError(f'Model not installed (exact name/tag required): {model}')
