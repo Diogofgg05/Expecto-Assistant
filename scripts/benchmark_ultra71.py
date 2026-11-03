@@ -35,7 +35,20 @@ def main():
             parser.exit(1, 'Ollama indisponível. Inicia o Ollama neste computador e confirma AURA_OLLAMA_URL. Nenhum benchmark foi executado.\n')
         return
     if not args.model:
-        parser.error('Indica --model NOME:TAG; usa --diagnose para listar os modelos instalados.')
+        from aura.laboratory_summary import choose_installed
+        from scripts.benchmark_ollama_streaming import loopback_url
+        async def discover():
+            settings = Settings.from_env()
+            async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
+                response = await client.get(loopback_url(settings.ollama_url) + '/api/tags')
+                response.raise_for_status()
+                return choose_installed(settings.ollama_model,
+                    [m['name'] for m in response.json().get('models', [])])
+        try:
+            args.model = asyncio.run(discover())
+            print('Modelo selecionado:', args.model)
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            parser.exit(1, f'Não foi possível selecionar um modelo local: {exc}\n')
     seed = args.seed if args.seed is not None else secrets.randbits(63)
     try:
         result = asyncio.run(run_laboratory(Settings.from_env(), seed=seed, per_domain=args.per_domain,
@@ -43,7 +56,7 @@ def main():
             models={'eco': args.eco_model or args.model, 'balanced': args.model, 'max': args.max_model or args.model},
             review_model=args.review_model, output=args.output))
         write_report(args.output, result)
-        print(json.dumps({'seed': seed, 'output': args.output, 'recommendation': result['recommendation']}, indent=2))
+        print(json.dumps({'seed': seed, 'output': args.output, 'summary': result['summary'], 'recommendation': result['recommendation']}, indent=2))
     except (httpx.HTTPError, OSError, ValueError) as exc:
         parser.exit(1, f'Laboratory could not complete: {type(exc).__name__}: {exc}\n')
 
