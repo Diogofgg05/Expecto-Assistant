@@ -80,6 +80,8 @@ async def run_laboratory(settings, *, seed, per_domain=5, repeats=2, warmup=1,
         if review_model and (review_model in models.values() or
                 any(installed.get(review_model) and installed[review_model] == installed[m] for m in models.values())):
             raise ValueError('Reviewer must be a different model from all candidate models')
+    from .laboratory_summary import environment, summarize
+    host_environment = environment()
     rows = []
     def report():
         complete = len(rows) == len(cases) * repeats * 3 * (2 if review_model else 1)
@@ -87,6 +89,7 @@ async def run_laboratory(settings, *, seed, per_domain=5, repeats=2, warmup=1,
                 'case_count': len(cases), 'repeats': repeats, 'warmup': warmup,
                 'models': models, 'model_digests': {m: installed[m] for m in set(models.values()) | ({review_model} if review_model else set())}, 'review_model': review_model,
                 'complete': complete, 'rows': rows,
+                'environment': host_environment, 'summary': summarize(rows),
                 'failure_regressions': [{'case_id': r['case_id'], 'repeat': r['repeat'],
                     'profile': r['profile'], 'pipeline': r['pipeline'], 'status': r['status'],
                     'accepted_incorrectly': r['status'] == 'reviewed_proposal' and not r['correct']}
