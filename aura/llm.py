@@ -11,6 +11,9 @@ from .config import Settings
 from .database import Database
 from .memory import MemoryEngine
 from .identity import Identity, IdentitySettings
+from .llm_pipeline.context import collect_context
+from .llm_pipeline.prompt import compose_messages
+from .llm_pipeline.inference import InferenceObservation, inference_exchange
 
 SYSTEM = '''És a Expecto, um assistente pessoal em português europeu. Responde de forma
 natural, concisa e precisa. Nunca afirmes que executaste uma ação sem confirmação
@@ -94,222 +97,23 @@ class Ollama:
         started = time.perf_counter()
         profile = choose_profile(question, history, mode=self.settings.performance_mode)
         memory_plan = self.nanomemory.decide(profile.name, prediction=profile.max_predict)
-        if profile.retrieve_personal:
-            # Independent retrievals can share the wait time.
-            # Both retrievals often embed the exact same query. Share one
-            # in-flight embedding within this request and drop it afterwards.
-            async with self.memory.query_scope():
-                notes, episodes = await asyncio.gather(
-                    self.memory.recall(question, 8),
-                    self.memory.recall_episodes(question, self.settings.episodic_lookback_months, 5),
-                )
-        else:
-            # Only explicitly self-contained general definitions use this path.
-            notes, episodes = [], []
-        # Never include unbounded external data in the prompt.
-        knowledge = self.db.documents(query=question, limit=4) if profile.retrieve_personal else []
-        from .learning import LearningEngine
-        from .quality import KnowledgeQuality
-        verifier = KnowledgeQuality(self.db)
-        learned_claims = []
-        for candidate in (LearningEngine(self.settings,self.db).claims(question,5) if profile.retrieve_personal else []):
-            assessment = verifier.inspect(candidate['id'])
-            if assessment and assessment['decision'] != 'withhold':
-                learned_claims.append(candidate)
-        from .temporal import DISPLAY
-        temporal = self.db.temporal_current(limit=20) if profile.retrieve_personal else []
-        from .relations import RelationMemory, DISPLAY as RELATION_DISPLAY
-        linked = (RelationMemory(self.db).search_related(question,limit=8,months=self.settings.episodic_lookback_months)
-                  if profile.retrieve_personal else [])
-        from .consolidation import ConsolidationEngine
-        summary_items = ConsolidationEngine(self.db).summaries(question,limit=2) if profile.retrieve_personal else []
-        # Rank evidence from every retrieval subsystem under ONE global budget.
-        # A section is not discarded just because earlier sections were large.
-        snippets: list[Passage] = []
-        for x in summary_items:
-            snippets.append(Passage('summary', x['content'][:1000]))
-        for item in temporal:
-            snippets.append(Passage(
-                'temporal',
-                f"- {DISPLAY.get(item['subject'], item['subject'])}: {item['value']} "
-                f"(registado em {item['valid_from'][:10]})", importance=1.0,
-            ))
-        for item in linked:
-            snippets.append(Passage(
-                'relations',
-                f"- {item['source_name']} "
-                f"{RELATION_DISPLAY.get(item['relation_type'], item['relation_type'])} "
-                f"{item['target_name']} [{item['origin']}]",
-            ))
-        for item in notes:
-            snippets.append(Passage(
-                'notes',
-                f"- [{item['category']} / {item['created_at']}] "
-                f"{item['content'][:350]}",
-                importance=float(item.get('importance') or 0) / 5,
-            ))
-        for item in episodes:
-            snippets.append(Passage(
-                'episodes',
-                f"- [{item['created_at'][:10]} / {item['role']}] "
-                f"{item['content'][:380]}",
-                importance=0.5,
-            ))
-        for item in learned_claims:
-            snippets.append(Passage(
-                'claims',
-                f"- {item['statement']} [{item['state']}; origens: "
-                + ', '.join(ref['url'] for ref in item['sources'][:2]) + "]",
-            ))
-        for item in knowledge:
-            snippets.append(Passage(
-                'documents',
-                f"- {item['title']}: {item['content'][:350]} "
-                f"[URL: {item['url']}; {item['evidence_level']}]",
-                importance=0.2,
-            ))
-        from .living_intelligence import ContinuityEngine
-        from .reflection import ReflectionEngine
-        if profile.retrieve_personal:
-            continuity = ContinuityEngine(self.db).context()
-            reflection = ReflectionEngine(self.db).approved_context()
-            if continuity:
-                snippets.append(Passage('continuity', continuity))
-            if reflection:
-                snippets.append(Passage('reflection', reflection))
-        selected_count = discarded_count = 0
-        if profile.name == 'off':
-            # A/B baseline: preserve full retrieval in original section order.
-            context = unranked_context(snippets)
-            selected_count = len(snippets)
-        elif profile.retrieve_personal:
-            # Conservative character estimate. Reserve capacity for the
-            # immutable system prompt, user query and previous turns.
-            memory_budget = min(profile.context_limit,
-                                max(900, memory_plan.num_ctx * 2 - 4000))
-            packed = pack_context(question, snippets, memory_budget)
-            context = packed.text
-            selected_count, discarded_count = packed.selected, packed.discarded
-        else:
-            context = ''
-        continuity_context = reflection_context = ''
-        # The system and identity prompts are never truncated or reranked.
-        context_chars = len(context) + len(continuity_context) + len(reflection_context)
+        context, selected_count, discarded_count = await collect_context(
+            self.settings, self.db, self.memory, question, profile, memory_plan)
         prep_ms = (time.perf_counter() - started) * 1000
-        first_token_at = None
-        completed = False
-        messages = [{'role': 'system', 'content': SYSTEM + '\n\n' + Identity().prompt(IdentitySettings(self.settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
-        # Bounded rolling history: newest turns remain, old turns are trimmed
-        # first. No private prompt/response caching; the system prompt is untouched.
-        max_history_chars = 1800 if profile.name == 'fast' else (5200 if profile.name == 'deep' else 3600)
-        selected = []
-        for x in reversed((history or [])[-8:]):
-            if not isinstance(x, dict) or x.get('role') not in ('user', 'assistant') or not isinstance(x.get('content'), str):
-                continue
-            content = x['content'][:1500]
-            if not content:
-                continue
-            available = max_history_chars - sum(len(item['content']) for item in selected)
-            if available < 100:
-                break
-            selected.append({'role': x['role'], 'content': content[:available]})
-        messages.extend(reversed(selected))
-        messages.append({'role': 'user', 'content': question[:2000]})
-        chunks = []
-        usage = {}
-        preferred = (self.settings.ollama_fast_model if profile.name == 'fast'
-                     else self.settings.ollama_deep_model if profile.name == 'deep'
-                     else '')
-        base_model = self.settings.ollama_model
-        chosen = preferred if preferred and preferred not in self._missing_models else base_model
-        used_model = chosen
+        context_chars = len(context)
+        messages = compose_messages(self.settings, question, history, profile, context, SYSTEM)
+        observation = InferenceObservation(used_model=self.settings.ollama_model)
         try:
-            client = self._transport()
-            payload = {
-                'model': chosen,
-                'messages': messages,
-                'stream': on_token is not None,
-                'keep_alive': memory_plan.keep_alive,
-                'options': {
-                    'num_predict': memory_plan.max_predict,
-                    'num_ctx': memory_plan.num_ctx,
-                    'temperature': 0.35 if profile.name == 'fast' else 0.45,
-                },
-            }
-            # Disable hidden thinking only for self-contained FAST definitions.
-            # Other profiles leave the model's default reasoning behavior intact.
-            if profile.name == 'fast':
-                payload['think'] = False
-            # A missing optional fast/deep model must not break the chat.
-            # Remember failures only for the lifetime of this process.
-            candidates = [chosen] + ([base_model] if chosen != base_model else [])
-            if on_token is None:
-                for model in candidates:
-                    used_model = model
-                    payload['model'] = model
-                    resp = await client.post(self.settings.ollama_url + '/api/chat', json=payload)
-                    if resp.status_code == 404 and model != base_model:
-                        self._missing_models.add(model)
-                        continue
-                    if resp.status_code == 404:
-                        return (f'O modelo {base_model} não está instalado. '
-                                f'Executa: ollama pull {base_model}.')
-                    resp.raise_for_status()
-                    usage = resp.json()
-                    answer = usage.get('message', {}).get('content', '').strip()
-                    completed = bool(answer)
-                    return answer or 'O modelo respondeu sem texto. Tenta novamente.'
-            else:
-                for model in candidates:
-                    used_model = model
-                    payload['model'] = model
-                    async with client.stream('POST', self.settings.ollama_url + '/api/chat',
-                                             json=payload) as resp:
-                        if resp.status_code == 404 and model != base_model:
-                            self._missing_models.add(model)
-                            continue
-                        if resp.status_code == 404:
-                            return (f'O modelo {base_model} não está instalado. '
-                                    f'Executa: ollama pull {base_model}.')
-                        resp.raise_for_status()
-                        async for line in resp.aiter_lines():
-                            if not line.strip():
-                                continue
-                            event = json.loads(line)
-                            if event.get('error'):
-                                raise ValueError('Ollama streaming failed')
-                            if event.get('done'):
-                                usage = event
-                            piece = event.get('message', {}).get('content', '')
-                            if isinstance(piece, str) and piece:
-                                chunks.append(piece)
-                                if first_token_at is None:
-                                    first_token_at = time.perf_counter()
-                                await on_token(piece)
-                    break
-                completed = bool(chunks)
-                return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
-        except httpx.ConnectError:
-            if chunks and on_token is not None:
-                raise  # Partial response: never persist as a completed exchange.
-            return ('Não consigo contactar o Ollama. Abre o Ollama, confirma que '
-                    'está a executar e tenta novamente. Os comandos da interface '
-                    'e a memória local continuam disponíveis.')
-        except httpx.TimeoutException:
-            if chunks and on_token is not None:
-                raise
-            return ('Ollama excedeu o tempo de resposta. Experimenta um modelo '
-                    'mais pequeno ou verifica a memória RAM e a utilização da CPU.')
-        except (httpx.HTTPError, ValueError):
-            if chunks and on_token is not None:
-                raise  # Do not mark partial output as a completed response.
-            return 'Ocorreu um erro na comunicação com o modelo local. Verifica os diagnósticos.'
+            return await inference_exchange(
+                self._transport, self.settings, profile, memory_plan,
+                messages, self._missing_models, on_token, observation)
         finally:
             self.metrics.record(
                 profile=profile.name, prep_ms=prep_ms,
                 total_ms=(time.perf_counter() - started) * 1000,
-                ttft_ms=((first_token_at - started) * 1000 if first_token_at is not None else None),
-                context_chars=context_chars, ok=completed,
-                provider=usage, model=used_model,
+                ttft_ms=((observation.first_token_at - started) * 1000
+                         if observation.first_token_at is not None else None),
+                context_chars=context_chars, ok=observation.completed,
+                provider=observation.usage, model=observation.used_model,
                 context_selected=selected_count, context_discarded=discarded_count,
             )
