@@ -269,6 +269,8 @@ class Ollama:
                                 f'Executa: ollama pull {base_model}.')
                     resp.raise_for_status()
                     usage = resp.json()
+                    if usage.get('done_reason') == 'length':
+                        raise ValueError('Ollama response truncated by token limit')
                     answer = usage.get('message', {}).get('content', '').strip()
                     completed = bool(answer) and usage.get('done_reason') != 'length'
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
@@ -300,7 +302,7 @@ class Ollama:
                                     first_token_at = time.perf_counter()
                                 await on_token(piece)
                     break
-                if not usage.get('done'):
+                if usage.get('done') is not True or usage.get('done_reason') == 'length':
                     raise ValueError('Ollama stream ended without completion')
                 completed = bool(chunks) and usage.get('done_reason') != 'length'
                 return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
