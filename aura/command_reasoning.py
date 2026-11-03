@@ -32,10 +32,11 @@ async def handle_reasoning_command(engine, original, reply):
                 def adapter(name):
                     return LocalReasoningModel(client, url, name, metrics=engine.llm.metrics,
                         resource_probe=engine.llm.loaded_models if engine.settings.response_resource_sampling else None)
-                result = await ReasoningEngine72(
-                    adapter(model), model=model,
-                    review=adapter(reviewer) if reviewer else None,
-                    review_model=reviewer).run(question, domain=domain)
+                async with engine.llm._infer_gate:
+                    result = await ReasoningEngine72(
+                        adapter(model), model=model,
+                        review=adapter(reviewer) if reviewer else None,
+                        review_model=reviewer).run(question, domain=domain)
             text = result['answer'] or 'Não consegui verificar suficientemente a resposta.'
             if result['answer']:
                 text += '\n\n' + ('Revisão por outro modelo; não constitui prova.' if result['status'] == 'reviewed_proposal' else 'Proposta sem verificação independente completa.')
