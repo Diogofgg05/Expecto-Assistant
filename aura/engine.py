@@ -1,5 +1,6 @@
 """Constrained intent router; model output NEVER authorizes a privileged action."""
 from __future__ import annotations
+from .ollama_protocol import installed_models
 import re
 import unicodedata
 from .database import Database
@@ -83,7 +84,7 @@ class AuraEngine(EngineServicesMixin):
                     async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
                         tags = await client.get(url + '/api/tags')
                         tags.raise_for_status()
-                        installed = {m['name']: m.get('digest') for m in tags.json().get('models', [])}
+                        installed = installed_models(tags.json())
                         if selected not in installed or reviewer not in installed:
                             return reply('Configura nomes exatos dos modelos de investigação e revisão já instalados.')
                         if installed.get(selected) and installed[selected] == installed.get(reviewer):
