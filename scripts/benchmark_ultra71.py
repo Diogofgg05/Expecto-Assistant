@@ -14,12 +14,28 @@ def main():
     parser.add_argument('--per-domain', type=int, default=5)
     parser.add_argument('--repeats', type=int, default=2)
     parser.add_argument('--warmup', type=int, default=1)
-    parser.add_argument('--model', required=True, help='Exact installed model name including tag')
+    parser.add_argument('--diagnose', action='store_true')
+    parser.add_argument('--model', default='' , help='Exact installed model name including tag')
     parser.add_argument('--eco-model', default='')
     parser.add_argument('--max-model', default='')
     parser.add_argument('--review-model', default='', help='Distinct installed model; enables paired raw/reviewed trials')
     parser.add_argument('--output', default='ultra71-results.json')
     args = parser.parse_args()
+    if args.diagnose:
+        from scripts.benchmark_ollama_streaming import loopback_url
+        async def diagnose():
+            url = loopback_url(Settings.from_env().ollama_url)
+            async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
+                response = await client.get(url + '/api/tags')
+                response.raise_for_status()
+                return {'available': True, 'models': [m['name'] for m in response.json().get('models', [])]}
+        try:
+            print(json.dumps(asyncio.run(diagnose()), indent=2))
+        except (httpx.HTTPError, ValueError, KeyError):
+            parser.exit(1, 'Ollama indisponível. Inicia o Ollama neste computador e confirma AURA_OLLAMA_URL. Nenhum benchmark foi executado.\n')
+        return
+    if not args.model:
+        parser.error('Indica --model NOME:TAG; usa --diagnose para listar os modelos instalados.')
     seed = args.seed if args.seed is not None else secrets.randbits(63)
     try:
         result = asyncio.run(run_laboratory(Settings.from_env(), seed=seed, per_domain=args.per_domain,
