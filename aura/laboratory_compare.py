@@ -4,6 +4,8 @@ import statistics
 
 
 def compare_reports(baseline, candidate):
+    if baseline.get('environment') != candidate.get('environment'):
+        raise ValueError('Environment differs or is missing in one report')
     for key in ('corpus_sha256', 'repeats', 'warmup'):
         if not baseline.get(key) or baseline.get(key) != candidate.get(key):
             if key == 'warmup' and baseline.get(key) == candidate.get(key) == 0:
