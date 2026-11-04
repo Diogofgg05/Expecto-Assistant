@@ -3,6 +3,8 @@
 (() => {
   'use strict';
   const MAX_SECONDS = 15;
+  const CONNECT_TIMEOUT_MS = 5000;
+  const TRANSCRIPTION_TIMEOUT_MS = 30000;
   const SILENCE_MS = 950;
   const MIN_VOICE_MS = 250;
   let current = null;
@@ -18,6 +20,43 @@
       cached = !!(details.local_stt || persistent);
     } catch (_) { cached = false; }
     return cached;
+  }
+
+  function clearDeadlines(session) {
+    if (session.connectDeadline !== null) clearTimeout(session.connectDeadline);
+    if (session.finalDeadline !== null) clearTimeout(session.finalDeadline);
+    session.connectDeadline = null;
+    session.finalDeadline = null;
+  }
+  function failSession(session, message) {
+    if (current !== session || session.failed) return;
+    session.failed = true;
+    clearDeadlines(session);
+    session.abort.abort();
+    const socket = session.socket;
+    session.socket = null;
+    current = null;
+    try { socket?.close(); } catch (_) {}
+    // stopSession also closes audio tracks and the AudioContext if recording.
+    void stopSession(session, false);
+    session.onError?.(new Error(message));
+  }
+  function awaitFinal(session) {
+    if (session.finalDeadline !== null) clearTimeout(session.finalDeadline);
+    session.finalDeadline = setTimeout(() => {
+      failSession(session, 'Whisper local não respondeu à transcrição dentro do prazo.');
+    }, TRANSCRIPTION_TIMEOUT_MS);
+  }
+  function microphoneMessage(err) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError')
+      return 'Acesso ao microfone recusado. Ativa a permissão do navegador.';
+    if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError')
+      return 'Não foi detetado nenhum microfone. Verifica o dispositivo de entrada.';
+    if (err?.name === 'NotReadableError' || err?.name === 'TrackStartError')
+      return 'Microfone ocupado ou indisponível. Fecha outras aplicações de áudio.';
+    if (err?.name === 'SecurityError')
+      return 'Microfone bloqueado. Usa localhost ou uma origem HTTPS autorizada.';
+    return String(err?.message || 'Falha ao iniciar o microfone local.');
   }
 
   function encodeWav(chunks, count, rate) {
@@ -71,17 +110,30 @@
   async function stopSession(session, send) {
     if (session.done) return;
     session.done = true;
+    if (!send) clearDeadlines(session);
     try { session.processor?.disconnect(); } catch (_) {}
     try { session.source?.disconnect(); } catch (_) {}
     try { session.muted?.disconnect(); } catch (_) {}
     session.stream?.getTracks().forEach(track => track.stop());
     try { await session.context?.close(); } catch (_) {}
     if (current !== session) return;
-    if (!send || !session.voiced) { if(session.socket)session.socket.close();current = null; session.onStatus?.('idle'); return; }
+    if (!send || !session.voiced) {
+      clearDeadlines(session);
+      const closing = session.socket;
+      session.socket = null; current = null;
+      try { closing?.close(); } catch (_) {}
+      session.onStatus?.('idle'); return;
+    }
     session.onStatus?.('transcribing');
     if(session.socket){
       if(session.socket.readyState === WebSocket.OPEN){
-        session.socket.send(JSON.stringify({type:'flush'}));return;
+        try {
+          session.socket.send(JSON.stringify({type:'flush'}));
+          awaitFinal(session);
+        } catch (_) {
+          failSession(session, 'Não consegui finalizar a gravação local.');
+        }
+        return;
       }
       if(session.socket.readyState === WebSocket.CONNECTING){
         // The recording may end before the WebSocket handshake finishes.
@@ -89,12 +141,17 @@
         session.flushWhenOpen=true;
         return;
       }
-      session.onError?.(new Error('Canal Whisper local interrompido.'));
-      current=null;return;
+      failSession(session, 'Canal Whisper local interrompido.');
+      return;
     }
     const wav = encodeWav(session.chunks, session.sampleCount, session.rate);
     session.chunks = []; // Free source PCM before network transcription.
     const signal = session.abort.signal;
+    let timedOut = false;
+    const deadline = setTimeout(() => {
+      timedOut = true;
+      session.abort.abort();
+    }, TRANSCRIPTION_TIMEOUT_MS);
     try {
       const resp = await fetch('/api/voice/transcribe', {
         method: 'POST', headers: { 'Content-Type': 'audio/wav' },
@@ -109,8 +166,12 @@
     } catch (err) {
       if (current === session) {
         current = null;
-        if (!signal.aborted) session.onError?.(err);
+        session.onError?.(timedOut
+          ? new Error('Whisper local excedeu o tempo de transcrição.')
+          : err);
       }
+    } finally {
+      clearTimeout(deadline);
     }
   }
   async function start(callbacks = {}) {
@@ -120,7 +181,8 @@
       ...callbacks, abort: new AbortController(), done: false,
       stream: null, context: null, processor: null, source: null, muted: null,
       chunks: [], sampleCount: 0, voiced: false, voicedMs: 0, silenceSince: null,
-      socket: null, resampler:null, gate:null, flushWhenOpen:false, rate: 48000
+      socket: null, resampler:null, gate:null, flushWhenOpen:false, rate: 48000,
+      connectDeadline:null, finalDeadline:null, failed:false
     };
     current = session;
     try {
@@ -165,31 +227,46 @@
         const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const socket = new WebSocket(scheme + '//' + location.host + '/api/voice/continuous');
         session.socket = socket;
+        session.connectDeadline = setTimeout(() => {
+          failSession(session, 'Whisper local não estabeleceu ligação. Verifica o servidor.');
+        }, CONNECT_TIMEOUT_MS);
         socket.onmessage = event => {
           if(current !== session || session.abort.signal.aborted)return;
           try{
+            if(typeof event.data !== 'string' || event.data.length > 65536)
+              throw new Error('Resposta do Whisper inválida.');
             const data=JSON.parse(event.data);
             if(data.type==='partial')session.onPartial?.(String(data.text||''));
-            if(data.type==='final'){
-              socket.close();session.socket=null;current=null;
+            else if(data.type==='final'){
+              clearDeadlines(session);
+              session.socket=null;current=null;
+              try { socket.close(); } catch (_) {}
               session.onResult?.(String(data.text||'').trim());
+            }else if(data.type==='error'){
+              failSession(session, 'Whisper local: '+String(data.reason||'falha de transcrição'));
+            }else{
+              throw new Error('Resposta do Whisper desconhecida.');
             }
-            if(data.type==='error'){
-              socket.close();session.socket=null;current=null;
-              session.onError?.(new Error('Whisper local: '+data.reason));
-            }
-          }catch(_){}
+          }catch(_){
+            failSession(session, 'Resposta inválida do Whisper local.');
+          }
         };
-        socket.onerror=()=>{
-          if(current===session){current=null;session.onError?.(new Error('Falha da ligação Whisper.'));}
-        };
+        socket.onerror=()=>failSession(session, 'Falha da ligação Whisper local.');
+        socket.onclose=()=>failSession(session, 'Canal Whisper local encerrado inesperadamente.');
         socket.onopen=()=>{
           if(current!==session){socket.close();return;}
+          if(session.connectDeadline !== null) clearTimeout(session.connectDeadline);
+          session.connectDeadline=null;
           for(const block of session.chunks)sendPCM(session,block);
           session.chunks=[];
           if(session.flushWhenOpen){
             session.flushWhenOpen=false;
-            socket.send(JSON.stringify({type:'flush'}));
+            try {
+              socket.send(JSON.stringify({type:'flush'}));
+              awaitFinal(session);
+            } catch (_) {
+              failSession(session, 'Não consegui finalizar a gravação local.');
+            }
           }
         };
       }
@@ -223,7 +300,7 @@
       return true;
     } catch (err) {
       await stopSession(session, false);
-      callbacks.onError?.(err);
+      callbacks.onError?.(new Error(microphoneMessage(err)));
       return true; // Started local path, do not start a second mic prompt.
     }
   }
@@ -231,8 +308,11 @@
     if (!current) return;
     const session = current;
     session.abort.abort();
-    if(session.socket){try{session.socket.close();}catch(_){}}
+    clearDeadlines(session);
     current = null;
+    const closing = session.socket;
+    session.socket = null;
+    try { closing?.close(); } catch (_) {}
     void stopSession(session, false);
   }
   window.ExpectoLocalSTT = {
