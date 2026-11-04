@@ -33,6 +33,11 @@ class Settings:
     ollama_fast_model: str = ''
     ollama_deep_model: str = ''
     performance_mode: str = 'balanced'
+    response_resource_sampling: bool = False
+    reasoning_review_model: str = ''
+    reasoning_math_model: str = ''
+    reasoning_code_model: str = ''
+    reasoning_research_model: str = ''
     nanomemory_mode: str = 'auto'
     ollama_max_concurrent: int = 1
     voice_whisper_binary: str = ''
@@ -76,6 +81,11 @@ class Settings:
             nanomemory_mode=(lambda value: value if value in ('auto', 'eco', 'balanced', 'max')
                              else 'auto')(os.getenv('AURA_NANOMEMORY_MODE', 'auto').strip().lower()),
             ollama_max_concurrent=max(1, min(4, int(os.getenv('AURA_OLLAMA_MAX_CONCURRENT', '1')))) if os.getenv('AURA_OLLAMA_MAX_CONCURRENT', '1').strip().isdigit() else 1,
+            response_resource_sampling=os.getenv('AURA_RESPONSE_RESOURCE_SAMPLING', 'false').lower() in ('1', 'true', 'yes'),
+            reasoning_math_model=os.getenv('AURA_REASONING_MATH_MODEL', '').strip(),
+            reasoning_code_model=os.getenv('AURA_REASONING_CODE_MODEL', '').strip(),
+            reasoning_research_model=os.getenv('AURA_REASONING_RESEARCH_MODEL', '').strip(),
+            reasoning_review_model=os.getenv('AURA_REASONING_REVIEW_MODEL', '').strip(),
             performance_mode=(lambda value: value if value in ('balanced', 'conservative', 'off')
                               else 'balanced')(os.getenv('AURA_PERFORMANCE_MODE', 'balanced').strip().lower()),
             voice_whisper_binary=os.getenv('AURA_VOICE_WHISPER_BINARY', ''),

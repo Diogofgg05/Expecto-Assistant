@@ -503,3 +503,12 @@ A Expecto dispõe de princípios estáveis e quatro modos de comunicação (`equ
 Continuidade autobiográfica controlada pelo utilizador, objetivos persistentes e sugestões contextuais sem ações autónomas invisíveis. Exemplos de comandos: `recorda experiência: Hoje concluí o meu projeto`, `mostra experiências`, `novo objetivo: Estudar Álgebra`, `meus objetivos`, `tens sugestões`, `concluir objetivo ID` e `apaga experiência ID`.
 
 Os registos de experiências não representam experiências subjetivas da IA, mas sim notas explícitas do utilizador. A identidade mantém-se estável. Ver [documentação da 5.0](docs/LIVING_INTELLIGENCE_50.md).
+
+## Próximas versões: laboratório 7.1 e verificação 7.2
+
+Comparação ECO/BALANCED/MAX com exercícios novos, métricas por resposta e
+recomendação condicionada à correção. Verificação exata de expressões e revisão
+por modelo separado, com no máximo uma correção.
+
+[Instalação, comandos, métricas e limites](docs/ULTRA_LABORATORY_71_REASONING_72.md).
+Não há ganhos reais certificados sem executar o laboratório no hardware local.
