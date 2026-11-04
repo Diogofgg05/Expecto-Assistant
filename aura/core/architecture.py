@@ -138,8 +138,18 @@ def find_cycles(graph: dict[str, frozenset[str]]) -> tuple[tuple[str, ...], ...]
     return tuple(sorted(cycles))
 
 
+GOVERNED_DOMAINS = (
+    "aura.core",
+    "aura.llm_pipeline",
+    "aura.memory_commands",
+    "aura.book_reasoning_components",
+)
+
+
 def _governed(name: str) -> bool:
-    return name.startswith(("aura.core.", "aura.llm_pipeline."))
+    """Include package initializers and their submodules in the boundary."""
+    return any(name == domain or name.startswith(domain + ".")
+               for domain in GOVERNED_DOMAINS)
 
 
 def _forbidden(source: str, target: str) -> bool:
@@ -156,6 +166,11 @@ def _forbidden(source: str, target: str) -> bool:
                 target.startswith("aura.api_routes_"))
     if source == "aura.core.services":
         return (target in {"aura.app", "aura.engine"} or
+                target.startswith("aura.api_routes_"))
+    if source.startswith(("aura.memory_commands.", "aura.book_reasoning_components.")):
+        # Domain implementation must not reach back into interactive entrypoints.
+        return (target in {"aura.app", "aura.engine", "aura.llm",
+                           "aura.core.services", "aura.book_reasoning"} or
                 target.startswith("aura.api_routes_"))
     return False
 
@@ -189,6 +204,10 @@ def mermaid(report: ArchitectureReport) -> str:
             return "Nucleo e contratos"
         if name.startswith("aura.llm_pipeline."):
             return "Pipeline IA"
+        if name.startswith("aura.memory_commands"):
+            return "Comandos de memoria"
+        if name.startswith("aura.book_reasoning_components"):
+            return "Raciocinio em livros"
         if name == "aura.llm":
             return "Ollama"
         if name in {"aura.app", "aura.engine"} or name.startswith(

@@ -100,3 +100,36 @@ def test_service_inventory_is_side_effect_free(tmp_path):
     assert "llm" in manifest["available"]
     assert services.initialized == before
     assert "passphrase" not in json.dumps(manifest)
+
+def test_integrated_domains_have_guarded_import_boundaries(tmp_path):
+    write(tmp_path, "aura.memory_commands.__init__", "")
+    write(tmp_path, "aura.memory_commands.episodes",
+          "from aura.engine import AuraEngine\n")
+    write(tmp_path, "aura.engine", "class AuraEngine: pass\n")
+    report = inspect_architecture(tmp_path)
+    assert any("aura/ memory" not in issue and
+               "memory_commands/episodes.py: import proibido" in issue
+               for issue in report.violations)
+
+    write(tmp_path, "aura.book_reasoning_components.__init__", "")
+    write(tmp_path, "aura.book_reasoning_components.study",
+          "from aura.book_reasoning import BookReasoningEngine\n")
+    write(tmp_path, "aura.book_reasoning", "class BookReasoningEngine: pass\n")
+    report = inspect_architecture(tmp_path)
+    assert any("book_reasoning_components/study.py: import proibido" in issue
+               for issue in report.violations)
+
+
+def test_cycle_between_book_components_is_rejected(tmp_path):
+    write(tmp_path, "aura.book_reasoning_components.__init__", "")
+    write(tmp_path, "aura.book_reasoning_components.study",
+          "from .questions import x\n")
+    write(tmp_path, "aura.book_reasoning_components.questions",
+          "from .study import x\n")
+    report = inspect_architecture(tmp_path)
+    assert not report.ok
+    assert report.governed_cycles == ((
+        "aura.book_reasoning_components.questions",
+        "aura.book_reasoning_components.study",
+    ),)
+
