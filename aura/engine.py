@@ -1,11 +1,10 @@
 """Constrained intent router; model output NEVER authorizes a privileged action."""
 from __future__ import annotations
+from .ollama_protocol import installed_models
 import re
 import unicodedata
 from .database import Database
-from .llm import Ollama
 from .identity import Identity, IdentitySettings
-from .memory import MemoryEngine
 from .config import Settings
 from .command_reflection import handle_reflection_command
 from .command_research import handle_research_command
@@ -13,6 +12,7 @@ from .command_interface import handle_interface_command
 from .command_memory import handle_memory_command
 from .command_evidence import handle_evidence_command
 from .engine_services import EngineServicesMixin
+from .core.services import CoreServices
 
 
 def normalized(s: str) -> str:
@@ -26,10 +26,15 @@ def reply(text: str, *, action: dict | None = None, data=None, speak: bool = Tru
 
 
 class AuraEngine(EngineServicesMixin):
-    def __init__(self, settings: Settings, db: Database):
+    def __init__(self, settings: Settings, db: Database, *, services: CoreServices | None = None):
         self.settings, self.db = settings, db
-        self.memory = MemoryEngine(settings, db)
-        self.llm = Ollama(settings, db, self.memory)
+        if services is not None and (services.settings is not settings or services.db is not db):
+            raise ValueError("As dependências têm de usar as mesmas definições e base de dados.")
+        self.services = services if services is not None else CoreServices(settings, db)
+        # Keep legacy public attributes. Both are built by the same scoped
+        # container; the model always receives the exact memory instance.
+        self.memory = self.services.get("memory")
+        self.llm = self.services.get("llm")
 
     async def command(self, original: str, history: list[dict] | None = None, *, on_token=None) -> dict:
         original = original.strip()
@@ -57,6 +62,7 @@ class AuraEngine(EngineServicesMixin):
         deep_request = re.match(r'^(?:investiga profundamente|raciocina com fontes|pesquisa aprofundada)\s*[:,-]?\s+(.+)$',original,re.I)
         if deep_request:
             import os
+            import httpx
             from .reasoning_orchestrator import ReasoningOrchestrator,LocalSearxngSearch
             from .multilayer_reasoning import OllamaMultiLayerAdapter
             from .book_semantics import OllamaBookEncoder
@@ -67,16 +73,43 @@ class AuraEngine(EngineServicesMixin):
                              'Sem ele posso investigar apenas os livros importados.')
             try:
                 adapter=OllamaMultiLayerAdapter(self.settings.ollama_url,
-                         os.getenv('AURA_REASONING_MODEL') or self.settings.ollama_model)
+                         self.settings.reasoning_research_model or os.getenv('AURA_REASONING_MODEL') or self.settings.ollama_model)
                 external=LocalSearxngSearch(self.settings.searxng_url) if wants_web else None
                 result=await ReasoningOrchestrator(self.db,adapter,external=external).run(question)
+                if result['status'] == 'supported_proposal' and self.settings.reasoning_review_model:
+                    import httpx
+                    from .reasoning_engine72 import ReasoningEngine72, LocalReasoningModel
+                    from scripts.benchmark_ollama_streaming import loopback_url
+                    url = loopback_url(self.settings.ollama_url)
+                    selected = self.settings.reasoning_research_model or os.getenv('AURA_REASONING_MODEL') or self.settings.ollama_model
+                    reviewer = self.settings.reasoning_review_model
+                    async def proposal(prompt):
+                        return result['answer']  # Revisions cannot silently invent new sources.
+                    async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
+                        tags = await client.get(url + '/api/tags')
+                        tags.raise_for_status()
+                        installed = installed_models(tags.json())
+                        if selected not in installed or reviewer not in installed:
+                            return reply('Configura nomes exatos dos modelos de investigação e revisão já instalados.')
+                        if installed.get(selected) and installed[selected] == installed.get(reviewer):
+                            return reply('A revisão precisa de um modelo com pesos diferentes do gerador.')
+                        checked = await ReasoningEngine72(proposal, model=selected,
+                            review=LocalReasoningModel(client, url, reviewer, metrics=self.llm.metrics,
+                                resource_probe=self.llm.loaded_models if self.settings.response_resource_sampling else None), review_model=reviewer, allow_revision=False).run(
+                                question, domain='research', evidence=[{'id': e['id'], 'text': e['text']}
+                                    for e in result.get('evidence', [])])
+                    result['independent_review'] = checked
+                    if checked['status'] != 'reviewed_proposal':
+                        result['status'] = 'requires_revision'
+                        result['answer'] = ''
+                        result['limitations'].append('Revisão independente insuficiente; resposta retida')
                 if result['status']=='supported_proposal':
                     message=result['answer'] + '\n\n(Resposta fundamentada em excertos; fontes não são provas.)'
                 else:
                     message='Não consegui verificar suficientemente a resposta. '
                     message+=' '.join(result.get('limitations',[])[:2])
                 return reply(message, data=result)
-            except (ValueError,TypeError) as ex:
+            except (ValueError, TypeError, KeyError, httpx.HTTPError) as ex:
                 return reply('Não consegui completar a investigação: '+str(ex))
 
         # Book-grounded natural questions: only imported/authorized PDF passages.
@@ -157,6 +190,11 @@ class AuraEngine(EngineServicesMixin):
             result = reply('Estou aqui. Em que posso ajudar?')
             result['capture'] = True
             return result
+
+        from .command_reasoning import handle_reasoning_command
+        checked = await handle_reasoning_command(self, original, reply)
+        if checked is not None:
+            return checked
 
         # Do not pass streaming-only arguments to the ordinary request path.
         # Preserves compatibility with local/third-party LLM adapters exposing

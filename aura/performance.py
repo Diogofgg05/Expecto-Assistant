@@ -94,7 +94,8 @@ class PerformanceMonitor:
 
     def record(self, *, profile: str, prep_ms: float, total_ms: float,
                ttft_ms: float | None, context_chars: int, ok: bool, provider=None, model: str = '',
-               context_selected: int = 0, context_discarded: int = 0):
+               context_selected: int = 0, context_discarded: int = 0,
+               resources=None, queue_ms: float = 0, memory_mode: str = ''):
         provider = provider if isinstance(provider, dict) else {}
         decode_count = provider.get('eval_count')
         decode_ns = provider.get('eval_duration')
@@ -103,6 +104,7 @@ class PerformanceMonitor:
                      if isinstance(decode_count, (int, float)) and decode_count >= 0
                      and isinstance(decode_ns, (int, float)) and decode_ns > 0 else None)
         self._rows.append({
+            'resources': resources, 'queue_ms': round(queue_ms, 2), 'memory_mode': memory_mode,
             'profile': profile, 'model': model[:100], 'prep_ms': round(max(0, prep_ms), 1),
             'total_ms': round(max(0, total_ms), 1),
             'ttft_ms': round(ttft_ms, 1) if ttft_ms is not None else None,
@@ -113,6 +115,10 @@ class PerformanceMonitor:
             'tokens_per_second': tok_per_s,
             'prompt_tokens_evaluated': prompt_count if isinstance(prompt_count, int) and prompt_count >= 0 else None,
         })
+
+    def recent(self) -> list[dict]:
+        from copy import deepcopy
+        return deepcopy(list(self._rows))
 
     def summary(self) -> dict:
         rows = list(self._rows)
