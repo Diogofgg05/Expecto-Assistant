@@ -196,6 +196,12 @@ class AuraEngine(EngineServicesMixin):
         if checked is not None:
             return checked
 
+        # Explicit user-invoked adaptive practice, with independent oracles.
+        from .command_practice import handle_practice_command
+        practice = handle_practice_command(self, original, key, reply)
+        if practice is not None:
+            return practice
+
         # Do not pass streaming-only arguments to the ordinary request path.
         # Preserves compatibility with local/third-party LLM adapters exposing
         # the historical reply(question, history) signature.

@@ -49,6 +49,11 @@ def _learning(c: "CoreServices"):
     return LearningEngine(c.settings, c.db)
 
 
+def _competency(c: "CoreServices"):
+    from ..competency import CompetencyEngine
+    return CompetencyEngine(c.db)
+
+
 def _optimizer(c: "CoreServices"):
     from ..optimizer import OptimizationLab
     return OptimizationLab(c.settings, c.db)
@@ -92,6 +97,7 @@ DEFAULT_FACTORIES: Mapping[str, ServiceFactory] = {
     "relations": _relations,
     "consolidation": _consolidation,
     "learning": _learning,
+    "competency": _competency,
     "optimizer": _optimizer,
     "epistemics": _epistemics,
     "quality": _quality,

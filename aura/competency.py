@@ -189,19 +189,26 @@ class CompetencyEngine:
                 raise ValueError("Exercício desconhecido")
             if row["status"] != "pending":
                 raise ValueError("Este exercício já foi encerrado")
-            if utcnow() - datetime.fromisoformat(row["created_at"]) > MAX_AGE:
+            expired = utcnow() - datetime.fromisoformat(row["created_at"]) > MAX_AGE
+            if expired:
+                # Commit the expiry state before raising: Database.connect()
+                # rolls back on exceptions raised inside the context manager.
                 conn.execute("UPDATE expecto_practice SET status='skipped' WHERE id=?",
                              (ident,))
-                raise ValueError("O exercício expirou; pede outro")
-            correct = int(given == row["solution"])
-            conn.execute("""UPDATE expecto_practice SET status='answered',
-                answered_at=?, user_answer=?, correct=? WHERE id=? AND status='pending'""",
-                (utcnow().isoformat(), given, correct, ident))
-            return {"id": ident, "domain": row["domain"],
-                    "area": LABELS[row["domain"]], "level": row["level"],
-                    "correct": bool(correct), "your_answer": given,
-                    "solution": row["solution"], "explanation": row["explanation"],
-                    "meaning": "Correção determinística de um exercício; não certifica competência geral."}
+                outcome = None
+            else:
+                correct = int(given == row["solution"])
+                conn.execute("""UPDATE expecto_practice SET status='answered',
+                    answered_at=?, user_answer=?, correct=? WHERE id=? AND status='pending'""",
+                    (utcnow().isoformat(), given, correct, ident))
+                outcome = {"id": ident, "domain": row["domain"],
+                           "area": LABELS[row["domain"]], "level": row["level"],
+                           "correct": bool(correct), "your_answer": given,
+                           "solution": row["solution"], "explanation": row["explanation"],
+                           "meaning": "Correção determinística de um exercício; não certifica competência geral."}
+        if expired:
+            raise ValueError("O exercício expirou; pede outro")
+        return outcome
 
     def skip(self) -> bool:
         with self.db.connect() as conn:

@@ -13,6 +13,10 @@ from .relations import DISPLAY as RELATION_DISPLAY
 
 class EngineServicesMixin:
     @cached_property
+    def competency(self):
+        return self.services.get("competency")
+
+    @cached_property
     def research(self):
         return self.services.get("research")
 
