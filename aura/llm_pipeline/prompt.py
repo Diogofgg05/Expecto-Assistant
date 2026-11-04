@@ -2,7 +2,7 @@
 from __future__ import annotations
 from ..identity import Identity, IdentitySettings
 
-def compose_messages(settings, question, history, profile, context, system_prompt):
+def compose_messages(settings, question, history, profile, context, system_prompt, *, input_limit=2000):
     # Legacy placeholders intentionally remain empty; preserve exact prompt spacing.
     continuity_context = reflection_context = ''
     messages = [{'role': 'system', 'content': system_prompt + '\n\n' + Identity().prompt(IdentitySettings(settings.data_dir).mode()) + '\n\n' + context + '\n\n' + continuity_context + '\n\n' + reflection_context}]
@@ -21,5 +21,5 @@ def compose_messages(settings, question, history, profile, context, system_promp
             break
         selected.append({'role': x['role'], 'content': content[:available]})
     messages.extend(reversed(selected))
-    messages.append({'role': 'user', 'content': question[:2000]})
+    messages.append({'role': 'user', 'content': question[:input_limit]})
     return messages
