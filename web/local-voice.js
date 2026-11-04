@@ -119,8 +119,10 @@
     if (current !== session) return;
     if (!send || !session.voiced) {
       clearDeadlines(session);
-      if (session.socket) session.socket.close();
-      current = null; session.onStatus?.('idle'); return;
+      const closing = session.socket;
+      session.socket = null; current = null;
+      try { closing?.close(); } catch (_) {}
+      session.onStatus?.('idle'); return;
     }
     session.onStatus?.('transcribing');
     if(session.socket){
@@ -307,8 +309,10 @@
     const session = current;
     session.abort.abort();
     clearDeadlines(session);
-    if(session.socket){try{session.socket.close();}catch(_){}}
     current = null;
+    const closing = session.socket;
+    session.socket = null;
+    try { closing?.close(); } catch (_) {}
     void stopSession(session, false);
   }
   window.ExpectoLocalSTT = {
