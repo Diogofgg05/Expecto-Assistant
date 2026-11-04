@@ -59,7 +59,7 @@ def test_memory_privacy_and_book_pipeline_share_same_local_database(tmp_path):
         assert db.get_option("private_mode", "false") == "true"
 
         no_books = await engine.command("Segundo os livros, explica os vetores")
-        assert "não tenho livros PDF" in no_books["text"].lower()
+        assert "não tenho livros pdf" in no_books["text"].lower()
         assert "research" not in services.initialized
         assert db.get_option("private_mode", "false") == "true"
 
