@@ -60,8 +60,10 @@ async def inference_exchange(transport, settings, profile, memory_plan, messages
                                 f'Executa: ollama pull {base_model}.')
                     resp.raise_for_status()
                     usage = resp.json()
+                    if usage.get('done_reason') == 'length':
+                        raise ValueError('Ollama response truncated by token limit')
                     answer = usage.get('message', {}).get('content', '').strip()
-                    completed = bool(answer)
+                    completed = bool(answer) and usage.get('done_reason') != 'length'
                     return answer or 'O modelo respondeu sem texto. Tenta novamente.'
             else:
                 for model in candidates:
@@ -91,7 +93,9 @@ async def inference_exchange(transport, settings, profile, memory_plan, messages
                                     first_token_at = time.perf_counter()
                                 await on_token(piece)
                     break
-                completed = bool(chunks)
+                if usage.get('done') is not True or usage.get('done_reason') == 'length':
+                    raise ValueError('Ollama stream ended without completion')
+                completed = bool(chunks) and usage.get('done_reason') != 'length'
                 return ''.join(chunks).strip() or 'O modelo respondeu sem texto. Tenta novamente.'
         except httpx.ConnectError:
             if chunks and on_token is not None:
